@@ -7,7 +7,7 @@ import CorrelationHeatmap from './components/CorrelationHeatmap';
 import RegressionAnalysis from './components/RegressionAnalysis';
 
 // const API_BASE = 'http://localhost:5000/api';
-const API_BASE = 'https://Titanic-app.railway.app/api';
+const API_BASE = 'https://titanic-app-production.up.railway.app/api';
 function App() {
   const [datasetInfo, setDatasetInfo] = useState(null);
   const [loading, setLoading] = useState(true);
