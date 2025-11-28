@@ -41,72 +41,122 @@ def load_data_from_supabase():
 # Load data from Supabase
 df = load_data_from_supabase()
 
+# def clean_titanic_data(df):
+#     """Clean the Titanic dataset with ADVANCED FEATURE ENGINEERING"""
+#     clean_df = df.copy()
+    
+#     # 1. Handle missing values
+#     clean_df['Age'].fillna(clean_df['Age'].median(), inplace=True)
+#     clean_df['Embarked'].fillna(clean_df['Embarked'].mode()[0], inplace=True)
+#     clean_df['Fare'].fillna(clean_df['Fare'].median(), inplace=True)
+    
+#     # 2. Extract titles from Names (creates new feature)
+#     clean_df['Title'] = clean_df['Name'].str.extract(r' ([A-Za-z]+)\.', expand=False)    
+#     # 3. Simplify titles
+#     title_mapping = {
+#         'Mr': 'Mr', 'Miss': 'Miss', 'Mrs': 'Mrs', 'Master': 'Master', 
+#         'Dr': 'Officer', 'Rev': 'Officer', 'Col': 'Officer', 'Major': 'Officer',
+#         'Mlle': 'Miss', 'Ms': 'Miss', 'Lady': 'Royalty', 'Countess': 'Royalty',
+#         'Don': 'Royalty', 'Dona': 'Royalty', 'Mme': 'Mrs', 'Sir': 'Royalty', 
+#         'Jonkheer': 'Royalty', 'Capt': 'Officer'
+#     }
+#     clean_df['Title'] = clean_df['Title'].map(title_mapping)
+#     clean_df['Title'].fillna('Other', inplace=True)
+    
+#     # 4. Family features
+#     clean_df['FamilySize'] = clean_df['SibSp'] + clean_df['Parch'] + 1
+#     clean_df['IsAlone'] = (clean_df['FamilySize'] == 1).astype(int)
+    
+#     # 5. Age groups (more meaningful than raw age)
+#     clean_df['AgeGroup'] = pd.cut(clean_df['Age'], 
+#                                 bins=[0, 12, 18, 35, 60, 100], 
+#                                 labels=['Child', 'Teen', 'YoungAdult', 'Adult', 'Senior'])
+    
+#     # 6. Fare groups (more meaningful than raw fare)
+#     clean_df['FareGroup'] = pd.cut(clean_df['Fare'],
+#                                  bins=[0, 10, 30, 100, 600],
+#                                  labels=['Low', 'Medium', 'High', 'Luxury'])
+    
+#     # 7. ENGINEERED FEATURES (High Impact!)
+    
+#     # 7.1 Demographic combinations
+#     clean_df['IsChild'] = (clean_df['Age'] < 12).astype(int)
+#     clean_df['IsFemaleChild'] = ((clean_df['Sex'] == 'female') & (clean_df['Age'] < 18)).astype(int)
+#     clean_df['IsRichFemale'] = ((clean_df['Sex'] == 'female') & (clean_df['Pclass'] == 1)).astype(int)
+#     clean_df['IsPoorMale'] = ((clean_df['Sex'] == 'male') & (clean_df['Pclass'] == 3)).astype(int)
+    
+#     # 7.2 Family survival patterns (proxy feature)
+#     # Group by last name and ticket to find families
+#     clean_df['LastName'] = clean_df['Name'].str.split(',').str[0]
+#     clean_df['TicketPrefix'] = clean_df['Ticket'].str.split().str[0]
+    
+#     # 7.3 Socio-economic indicators
+#     clean_df['FarePerPerson'] = clean_df['Fare'] / clean_df['FamilySize']
+#     clean_df['IsHighClass'] = (clean_df['Pclass'] == 1).astype(int)
+#     clean_df['WealthIndicator'] = clean_df['Fare'] * (4 - clean_df['Pclass'])  # Higher for wealthy
+    
+#     # 7.4 Cabin-based features (if available)
+#     clean_df['Deck'] = clean_df['Cabin'].str[0]  # Extract deck from cabin
+#     clean_df['HasCabin'] = (~clean_df['Cabin'].isna()).astype(int)
+    
+#     # 7.5 Interaction features
+#     clean_df['ClassSex'] = clean_df['Pclass'].astype(str) + '_' + clean_df['Sex']
+#     clean_df['AgeClass'] = clean_df['AgeGroup'].astype(str) + '_' + clean_df['Pclass'].astype(str)
+    
+#     # 8. Drop original columns we won't use
+#     columns_to_drop = ['Cabin', 'Ticket', 'Name', 'PassengerId', 'LastName', 'TicketPrefix']
+#     clean_df = clean_df.drop(columns=[col for col in columns_to_drop if col in clean_df.columns])
+    
+#     return clean_df
 def clean_titanic_data(df):
-    """Clean the Titanic dataset with ADVANCED FEATURE ENGINEERING"""
+    """Clean the Titanic dataset with proper type handling for Supabase data"""
     clean_df = df.copy()
     
-    # 1. Handle missing values
-    clean_df['Age'].fillna(clean_df['Age'].median(), inplace=True)
-    clean_df['Embarked'].fillna(clean_df['Embarked'].mode()[0], inplace=True)
-    clean_df['Fare'].fillna(clean_df['Fare'].median(), inplace=True)
+    print(f"🔧 Data types before cleaning: {clean_df.dtypes}")
     
-    # 2. Extract titles from Names (creates new feature)
-    clean_df['Title'] = clean_df['Name'].str.extract(r' ([A-Za-z]+)\.', expand=False)    
-    # 3. Simplify titles
-    title_mapping = {
-        'Mr': 'Mr', 'Miss': 'Miss', 'Mrs': 'Mrs', 'Master': 'Master', 
-        'Dr': 'Officer', 'Rev': 'Officer', 'Col': 'Officer', 'Major': 'Officer',
-        'Mlle': 'Miss', 'Ms': 'Miss', 'Lady': 'Royalty', 'Countess': 'Royalty',
-        'Don': 'Royalty', 'Dona': 'Royalty', 'Mme': 'Mrs', 'Sir': 'Royalty', 
-        'Jonkheer': 'Royalty', 'Capt': 'Officer'
-    }
-    clean_df['Title'] = clean_df['Title'].map(title_mapping)
-    clean_df['Title'].fillna('Other', inplace=True)
+    # 1. Convert data types (Supabase might have different types than CSV)
+    numeric_columns = ['Age', 'Fare', 'SibSp', 'Parch', 'Pclass', 'Survived', 'PassengerId']
     
-    # 4. Family features
-    clean_df['FamilySize'] = clean_df['SibSp'] + clean_df['Parch'] + 1
-    clean_df['IsAlone'] = (clean_df['FamilySize'] == 1).astype(int)
+    for col in numeric_columns:
+        if col in clean_df.columns:
+            clean_df[col] = pd.to_numeric(clean_df[col], errors='coerce')
     
-    # 5. Age groups (more meaningful than raw age)
-    clean_df['AgeGroup'] = pd.cut(clean_df['Age'], 
-                                bins=[0, 12, 18, 35, 60, 100], 
-                                labels=['Child', 'Teen', 'YoungAdult', 'Adult', 'Senior'])
+    # 2. Handle missing values (without inplace to avoid warnings)
+    if 'Age' in clean_df.columns:
+        clean_df['Age'] = clean_df['Age'].fillna(clean_df['Age'].median())
+    if 'Embarked' in clean_df.columns:
+        clean_df['Embarked'] = clean_df['Embarked'].fillna(clean_df['Embarked'].mode()[0] if not clean_df['Embarked'].mode().empty else 'S')
+    if 'Fare' in clean_df.columns:
+        clean_df['Fare'] = clean_df['Fare'].fillna(clean_df['Fare'].median())
     
-    # 6. Fare groups (more meaningful than raw fare)
-    clean_df['FareGroup'] = pd.cut(clean_df['Fare'],
-                                 bins=[0, 10, 30, 100, 600],
-                                 labels=['Low', 'Medium', 'High', 'Luxury'])
+    # 3. Extract titles from Names
+    if 'Name' in clean_df.columns:
+        clean_df['Title'] = clean_df['Name'].str.extract(r' ([A-Za-z]+)\.', expand=False)
+        
+        title_mapping = {
+            'Mr': 'Mr', 'Miss': 'Miss', 'Mrs': 'Mrs', 'Master': 'Master', 
+            'Dr': 'Officer', 'Rev': 'Officer', 'Col': 'Officer', 'Major': 'Officer',
+            'Mlle': 'Miss', 'Ms': 'Miss', 'Lady': 'Royalty', 'Countess': 'Royalty',
+            'Don': 'Royalty', 'Dona': 'Royalty', 'Mme': 'Mrs', 'Sir': 'Royalty', 
+            'Jonkheer': 'Royalty', 'Capt': 'Officer'
+        }
+        clean_df['Title'] = clean_df['Title'].map(title_mapping)
+        clean_df['Title'] = clean_df['Title'].fillna('Other')
     
-    # 7. ENGINEERED FEATURES (High Impact!)
+    # 4. Family features (with proper type conversion)
+    if 'SibSp' in clean_df.columns and 'Parch' in clean_df.columns:
+        # Ensure numeric types
+        clean_df['SibSp'] = pd.to_numeric(clean_df['SibSp'], errors='coerce').fillna(0)
+        clean_df['Parch'] = pd.to_numeric(clean_df['Parch'], errors='coerce').fillna(0)
+        
+        clean_df['FamilySize'] = clean_df['SibSp'] + clean_df['Parch'] + 1
+        clean_df['IsAlone'] = (clean_df['FamilySize'] == 1).astype(int)
     
-    # 7.1 Demographic combinations
-    clean_df['IsChild'] = (clean_df['Age'] < 12).astype(int)
-    clean_df['IsFemaleChild'] = ((clean_df['Sex'] == 'female') & (clean_df['Age'] < 18)).astype(int)
-    clean_df['IsRichFemale'] = ((clean_df['Sex'] == 'female') & (clean_df['Pclass'] == 1)).astype(int)
-    clean_df['IsPoorMale'] = ((clean_df['Sex'] == 'male') & (clean_df['Pclass'] == 3)).astype(int)
-    
-    # 7.2 Family survival patterns (proxy feature)
-    # Group by last name and ticket to find families
-    clean_df['LastName'] = clean_df['Name'].str.split(',').str[0]
-    clean_df['TicketPrefix'] = clean_df['Ticket'].str.split().str[0]
-    
-    # 7.3 Socio-economic indicators
-    clean_df['FarePerPerson'] = clean_df['Fare'] / clean_df['FamilySize']
-    clean_df['IsHighClass'] = (clean_df['Pclass'] == 1).astype(int)
-    clean_df['WealthIndicator'] = clean_df['Fare'] * (4 - clean_df['Pclass'])  # Higher for wealthy
-    
-    # 7.4 Cabin-based features (if available)
-    clean_df['Deck'] = clean_df['Cabin'].str[0]  # Extract deck from cabin
-    clean_df['HasCabin'] = (~clean_df['Cabin'].isna()).astype(int)
-    
-    # 7.5 Interaction features
-    clean_df['ClassSex'] = clean_df['Pclass'].astype(str) + '_' + clean_df['Sex']
-    clean_df['AgeClass'] = clean_df['AgeGroup'].astype(str) + '_' + clean_df['Pclass'].astype(str)
-    
-    # 8. Drop original columns we won't use
-    columns_to_drop = ['Cabin', 'Ticket', 'Name', 'PassengerId', 'LastName', 'TicketPrefix']
+    # 5. Drop columns that might cause issues
+    columns_to_drop = ['Cabin', 'Ticket', 'Name', 'id', 'created_at']
     clean_df = clean_df.drop(columns=[col for col in columns_to_drop if col in clean_df.columns])
     
+    print(f"✅ Data cleaning complete. Final shape: {clean_df.shape}")
     return clean_df
 
 # Clean the data
