@@ -21,7 +21,7 @@ def load_data_from_supabase():
         print("📥 Loading data from Supabase...")
         
         # Fetch all data from Supabase
-        response = supabase.table('titanic_passengers').select('*').execute()
+        response = supabase.table('Project_1').select('*').execute()
         
         if not response.data:
             raise Exception("No data found in Supabase")
