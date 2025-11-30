@@ -47,12 +47,14 @@ def clean_titanic_data(df):
     
     print(f"🔧 Data types before cleaning: {clean_df.dtypes}")
     
-    # 1. Convert data types (Supabase might have different types than CSV)
+    # 1. Convert ALL data types that should be numeric (Supabase might have different types than CSV)
     numeric_columns = ['Age', 'Fare', 'SibSp', 'Parch', 'Pclass', 'Survived', 'PassengerId']
     
     for col in numeric_columns:
         if col in clean_df.columns:
-            clean_df[col] = pd.to_numeric(clean_df[col], errors='coerce')
+            # Convert to string first, then to numeric to handle any data type issues
+            clean_df[col] = pd.to_numeric(clean_df[col].astype(str), errors='coerce')
+            print(f"   Converted {col} from {df[col].dtype} to {clean_df[col].dtype}")
     
     # 2. Handle missing values (without inplace to avoid warnings)
     if 'Age' in clean_df.columns:
@@ -78,9 +80,9 @@ def clean_titanic_data(df):
     
     # 4. Family features (with proper type conversion)
     if 'SibSp' in clean_df.columns and 'Parch' in clean_df.columns:
-        # Ensure numeric types
-        clean_df['SibSp'] = pd.to_numeric(clean_df['SibSp'], errors='coerce').fillna(0)
-        clean_df['Parch'] = pd.to_numeric(clean_df['Parch'], errors='coerce').fillna(0)
+        # Ensure numeric types - FIXED: Convert to string first, then to numeric
+        clean_df['SibSp'] = pd.to_numeric(clean_df['SibSp'].astype(str), errors='coerce').fillna(0)
+        clean_df['Parch'] = pd.to_numeric(clean_df['Parch'].astype(str), errors='coerce').fillna(0)
         
         clean_df['FamilySize'] = clean_df['SibSp'] + clean_df['Parch'] + 1
         clean_df['IsAlone'] = (clean_df['FamilySize'] == 1).astype(int)
@@ -90,8 +92,8 @@ def clean_titanic_data(df):
     clean_df = clean_df.drop(columns=[col for col in columns_to_drop if col in clean_df.columns])
     
     print(f"✅ Data cleaning complete. Final shape: {clean_df.shape}")
+    print(f"🔧 Data types after cleaning: {clean_df.dtypes}")
     return clean_df
-
 # Clean the data
 cleaned_df = clean_titanic_data(df)
 
@@ -181,8 +183,8 @@ def get_supabase_model_runs():
 def supabase_health_check():
     """Check Supabase connection and data"""
     try:
-        # Test connection and get data count
-        response = supabase.table('titanic_passengers').select('id', count='exact').limit(1).execute()
+        # Use your actual table name 'Project_1' instead of 'titanic_passengers'
+        response = supabase.table('Project_1').select('PassengerId', count='exact').limit(1).execute()
         return jsonify({
             'status': 'connected',
             'database': 'Supabase',
@@ -291,10 +293,23 @@ def survival_regression():
         from sklearn.ensemble import RandomForestClassifier
         from sklearn.model_selection import cross_val_score, StratifiedKFold
         print("🚀 RUNNING REAL MODEL WITH ENGINEERED FEATURES")
-        
+
+        # DEBUG: Check data types before starting
+        print(f"🔍 DEBUG: cleaned_df dtypes: {cleaned_df.dtypes}")
+        print(f"🔍 DEBUG: Survived column type: {cleaned_df['Survived'].dtype}")
+        print(f"🔍 DEBUG: Sample Survived values: {cleaned_df['Survived'].head()}")        
         # Prepare features and target
         features_df = cleaned_df.copy()
+
+        # FORCE CONVERT CRITICAL COLUMNS TO NUMERIC (double safety)
+        critical_numeric_cols = ['Survived', 'Pclass', 'Age', 'SibSp', 'Parch', 'Fare']
+        for col in critical_numeric_cols:
+            if col in features_df.columns:
+                features_df[col] = pd.to_numeric(features_df[col], errors='coerce')
         
+        # Remove any rows with NaN in Survived (target variable)
+        features_df = features_df.dropna(subset=['Survived'])
+
         # Encode categorical variables
         le_sex = LabelEncoder()
         le_embarked = LabelEncoder()
@@ -407,22 +422,22 @@ def survival_regression():
                 'correct': bool(prediction == y.loc[idx])  # Convert numpy bool to Python bool
             })
 
-        # Save model run to Supabase
-        model_run = save_model_run_to_supabase(
-            accuracy=float(accuracy),
-            train_samples=int(len(X_train)),
-            test_samples=int(len(X_test)),
-            feature_count=int(len(feature_columns))
-        )
+        # # Save model run to Supabase
+        # model_run = save_model_run_to_supabase(
+        #     accuracy=float(accuracy),
+        #     train_samples=int(len(X_train)),
+        #     test_samples=int(len(X_test)),
+        #     feature_count=int(len(feature_columns))
+        # )
         
-        # Save sample predictions to Supabase
-        for pred in sample_predictions:
-            save_prediction_to_supabase(
-                passenger_data=pred['passenger_data'],
-                prediction=pred['predicted_survival'],
-                probability=pred['survival_probability'],
-                actual=pred['actual_survival']
-            )
+        # # Save sample predictions to Supabase
+        # for pred in sample_predictions:
+        #     save_prediction_to_supabase(
+        #         passenger_data=pred['passenger_data'],
+        #         prediction=pred['predicted_survival'],
+        #         probability=pred['survival_probability'],
+        #         actual=pred['actual_survival']
+        #     )
                 
         # Prepare final response with ALL NATIVE TYPES
         response_data = {
