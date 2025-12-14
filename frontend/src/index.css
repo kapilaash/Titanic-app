@@ -78,3 +78,13 @@
     text-size-adjust: none;
   }
 }
+/* In your global CSS */
+@media (max-height: 600px) {
+  .intro-modal {
+    max-height: 90vh !important;
+  }
+  .intro-modal-content {
+    padding-top: 0.5rem !important;
+    padding-bottom: 0.5rem !important;
+  }
+}

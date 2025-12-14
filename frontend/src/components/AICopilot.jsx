@@ -134,7 +134,7 @@ const AICopilot = ({ activeView, onNavigate }) => {
   const messagesContainerRef = useRef(null);
   const messagesEndRef = useRef(null);
   const tourOverlayRef = useRef(null);
-
+  const [hasTakenTour, setHasTakenTour] = useState(false);
   // Check API health on component mount and when opening
   useEffect(() => {
     if (isOpen && !isMinimized) {
@@ -509,48 +509,50 @@ const AICopilot = ({ activeView, onNavigate }) => {
     }
   };
 
-  const startTour = async () => {
-    try {
-      const response = await axios.get(`${API_BASE}/copilot/tour`, {
-        params: { type: 'quick' },
-        timeout: 3000
-      });
-      setTourSteps(response.data.tour.steps);
-      setShowTour(true);
-      setCurrentTourStep(0);
-    } catch (error) {
-      console.warn('⚠️ Tour API failed, using fallback tour:', error.message);
-      // Fallback tour
-      setTourSteps([
-        {
-          step: 1, 
-          section: "dashboard", 
-          title: "Dashboard Overview", 
-          description: "Start here to see key metrics, survival charts, and dataset insights at a glance."
-        },
-        {
-          step: 2, 
-          section: "analysis", 
-          title: "Feature Analysis", 
-          description: "Explore correlations between features and analyze survival patterns by demographics."
-        },
-        {
-          step: 3, 
-          section: "regression", 
-          title: "ML Predictions", 
-          description: "Try survival predictions with our AI model and see feature importance."
-        },
-        {
-          step: 4, 
-          section: "data", 
-          title: "Data Explorer", 
-          description: "Browse passenger records, filter data, and explore individual passenger details."
-        }
-      ]);
-      setShowTour(true);
-      setCurrentTourStep(0);
-    }
-  };
+const startTour = async () => {
+  setHasTakenTour(true); // 👈 THIS IS THE KEY LINE
+  
+  try {
+    const response = await axios.get(`${API_BASE}/copilot/tour`, {
+      params: { type: 'quick' },
+      timeout: 3000
+    });
+    setTourSteps(response.data.tour.steps);
+    setShowTour(true);
+    setCurrentTourStep(0);
+  } catch (error) {
+    console.warn('⚠️ Tour API failed, using fallback tour:', error.message);
+    // Fallback tour
+    setTourSteps([
+      {
+        step: 1, 
+        section: "dashboard", 
+        title: "Dashboard Overview", 
+        description: "Start here to see key metrics, survival charts, and dataset insights at a glance."
+      },
+      {
+        step: 2, 
+        section: "analysis", 
+        title: "Feature Analysis", 
+        description: "Explore correlations between features and analyze survival patterns by demographics."
+      },
+      {
+        step: 3, 
+        section: "regression", 
+        title: "ML Predictions", 
+        description: "Try survival predictions with our AI model and see feature importance."
+      },
+      {
+        step: 4, 
+        section: "data", 
+        title: "Data Explorer", 
+        description: "Browse passenger records, filter data, and explore individual passenger details."
+      }
+    ]);
+    setShowTour(true);
+    setCurrentTourStep(0);
+  }
+};
 
   const nextTourStep = () => {
     if (currentTourStep < tourSteps.length - 1) {
@@ -704,14 +706,42 @@ const AICopilot = ({ activeView, onNavigate }) => {
                 >
                   <span className="text-xl">🔌</span>
                 </button>
-                <button
+                {/* <button
                   onClick={startTour}
                   className="p-2 hover:bg-white/10 rounded-lg transition-colors tour-button"
                   title="Start Tour"
                   aria-label="Start app tour"
                 >
                   <span className="text-xl">🗺️</span>
-                </button>
+                </button> */}
+                <button
+                onClick={startTour}
+                className="p-2 hover:bg-white/10 rounded-lg transition-colors tour-button relative group"
+                title={hasTakenTour ? "Restart Tour" : "Start Guided Tour"}
+                aria-label="Start app tour"
+                >
+                {/* Orange glow - ONLY shows if user hasn't taken the tour yet */}
+                {!hasTakenTour && isOpen && !isMinimized && (
+                    <div className="absolute -inset-2 bg-gradient-to-r from-yellow-400 to-orange-500 rounded-lg opacity-30 group-hover:opacity-40 transition-opacity animate-pulse-slow"></div>
+                )}
+                
+                <span className="text-xl relative z-10">🗺️</span>
+                
+                {/* Optional: Show checkmark after tour taken */}
+                {/* {hasTakenTour && (
+                    <div className="absolute -top-1 -right-1 w-3 h-3 bg-green-500 rounded-full flex items-center justify-center animate-bounce">
+                    <svg className="w-2 h-2 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M5 13l4 4L19 7" />
+                    </svg>
+                    </div>
+                )} */}
+                
+                {/* Tooltip on hover */}
+                <div className="absolute -top-10 left-1/2 transform -translate-x-1/2 bg-gray-900 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none">
+                    {hasTakenTour ? "Tour Completed ✓" : "Start Guided Tour"}
+                    <div className="absolute -bottom-1 left-1/2 transform -translate-x-1/2 w-2 h-2 bg-gray-900 rotate-45"></div>
+                </div>
+                </button>            
                 <button
                   onClick={handleCloseCopilot}
                   className="p-2 hover:bg-white/10 rounded-lg transition-colors"

@@ -16,6 +16,7 @@ function App() {
   const [error, setError] = useState(null);
   const [activeView, setActiveView] = useState('dashboard');
   const [connectionStatus, setConnectionStatus] = useState('checking');
+  const [showCopilotIntro, setShowCopilotIntro] = useState(true);
 
   useEffect(() => {
     fetchDatasetInfo();
@@ -184,7 +185,129 @@ function App() {
           </div>
         </div>
       </header>
-
+      {showCopilotIntro && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-[60] flex items-center justify-center p-4 animate-fade-in">
+          <div className="bg-white rounded-2xl max-w-md w-full max-h-[85vh] overflow-hidden flex flex-col shadow-2xl animate-slide-up border border-blue-200 mx-4">
+            {/* Header - Fixed at top */}
+            <div className="flex items-center justify-between p-4 sm:p-6 border-b border-gray-200 bg-gradient-to-r from-blue-50 to-purple-50 flex-shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 sm:w-12 sm:h-12 bg-gradient-to-r from-blue-600 to-purple-600 rounded-xl flex items-center justify-center">
+                  <span className="text-white text-lg sm:text-xl">🤖</span>
+                </div>
+                <div>
+                  <h3 className="font-bold text-gray-900 text-base sm:text-lg md:text-xl">Meet Your AI Copilot</h3>
+                  <p className="text-xs sm:text-sm text-gray-600">Personal guide for Titanic analytics</p>
+                </div>
+              </div>
+              <button 
+                onClick={() => setShowCopilotIntro(false)}
+                className="text-gray-400 hover:text-gray-600 text-xl sm:text-2xl p-1 -mr-2"
+                aria-label="Close introduction"
+              >
+                ✕
+              </button>
+            </div>
+            
+            {/* Scrollable Content Area */}
+            <div className="flex-1 overflow-y-auto p-4 sm:p-6">
+              <div className="space-y-4 sm:space-y-6">
+                <div className="flex items-start gap-3 sm:gap-4">
+                  <div className="w-10 h-10 sm:w-12 sm:h-12 bg-blue-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                    <span className="text-blue-600 text-base sm:text-lg">🎯</span>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-gray-700 text-sm sm:text-base leading-relaxed">
+                      <strong className="font-semibold">I can help you navigate</strong> through dashboards, explain insights, and answer questions about Titanic data.
+                    </p>
+                  </div>
+                </div>
+                
+                <div className="flex items-start gap-3 sm:gap-4">
+                  <div className="w-10 h-10 sm:w-12 sm:h-12 bg-purple-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                    <span className="text-purple-600 text-base sm:text-lg">🎤</span>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-gray-700 text-sm sm:text-base leading-relaxed">
+                      <strong className="font-semibold">Try voice commands</strong> (coming soon!) to ask questions naturally while exploring.
+                    </p>
+                  </div>
+                </div>
+                
+                {/* Additional Mobile-Specific Tip */}
+                <div className="bg-gradient-to-r from-blue-50 to-purple-50 rounded-xl p-3 sm:p-4 border border-blue-100 mt-4">
+                  <div className="flex items-center gap-2 text-blue-700">
+                    <span className="text-lg">📱</span>
+                    <span className="text-xs sm:text-sm font-medium">Mobile Friendly</span>
+                  </div>
+                  <p className="text-xs sm:text-sm text-gray-600 mt-1">
+                    The AI Copilot works perfectly on all devices - tap the floating button to start chatting!
+                  </p>
+                </div>
+              </div>
+            </div>
+            
+            {/* Footer - Fixed at bottom */}
+            <div className="p-4 sm:p-6 border-t border-gray-200 bg-gray-50 flex-shrink-0">
+              <div className="flex flex-col sm:flex-row justify-between items-center gap-3 sm:gap-4">
+                <div className="w-full sm:w-auto order-2 sm:order-1">
+                  <label className="flex items-center justify-center sm:justify-start gap-2 text-xs text-gray-500">
+                    <input 
+                      type="checkbox" 
+                      className="rounded text-blue-600 w-4 h-4"
+                      defaultChecked
+                      onChange={(e) => {
+                        if(!e.target.checked) {
+                          localStorage.setItem('copilotIntroDismissed', 'true');
+                        }
+                      }}
+                    />
+                    Don't show this again
+                  </label>
+                </div>
+                
+                <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto order-1 sm:order-2">
+                  <button
+                    onClick={() => setShowCopilotIntro(false)}
+                    className="px-4 py-2.5 sm:py-2 text-gray-600 hover:text-gray-800 text-sm font-medium rounded-lg hover:bg-gray-100 transition-colors w-full sm:w-auto"
+                  >
+                    Skip for now
+                  </button>
+                  <button
+                    onClick={() => {
+                      setShowCopilotIntro(false);
+                      // Use ref instead of querySelector for better reliability
+                      setTimeout(() => {
+                        const copilotButton = document.querySelector('[aria-label="Open AI Copilot"]');
+                        if (copilotButton) {
+                          copilotButton.click();
+                        } else {
+                          // Fallback: show toast or open via state if you have ref
+                          console.log("Copilot button not found");
+                        }
+                      }, 300);
+                    }}
+                    className="bg-gradient-to-r from-blue-600 to-purple-600 text-white px-5 py-2.5 sm:py-2 rounded-xl font-medium hover:opacity-90 transition-opacity text-sm sm:text-base shadow-lg w-full sm:w-auto"
+                  >
+                    Meet the Copilot →
+                  </button>
+                </div>
+              </div>
+              
+              {/* Progress indicator for mobile */}
+              <div className="flex justify-center mt-4 sm:hidden">
+                <div className="flex gap-2">
+                  {[1, 2, 3].map((dot, idx) => (
+                    <div 
+                      key={dot}
+                      className={`w-2 h-2 rounded-full ${idx === 0 ? 'bg-blue-600' : 'bg-gray-300'}`}
+                    />
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
       {/* Main Content */}
       <main className="container mx-auto px-4 py-6 md:py-8">
         {/* Dashboard View */}
