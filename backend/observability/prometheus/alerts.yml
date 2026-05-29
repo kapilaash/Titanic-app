@@ -1,0 +1,98 @@
+groups:
+  - name: titanic-platform-health
+    rules:
+      - alert: ServiceHealthProbeFailed
+        expr: probe_success{job="service-health"} == 0
+        for: 30s
+        labels:
+          severity: critical
+          layer: platform
+        annotations:
+          summary: "Service health probe failed"
+          description: "{{ $labels.instance }} is not returning a healthy HTTP response."
+
+      - alert: PrometheusTargetDown
+        expr: up == 0
+        for: 30s
+        labels:
+          severity: critical
+          layer: observability
+        annotations:
+          summary: "Prometheus target is down"
+          description: "Prometheus cannot scrape {{ $labels.job }} target {{ $labels.instance }}."
+
+      - alert: BackendHighLatency
+        expr: rate(flask_http_request_duration_seconds_sum[2m]) / rate(flask_http_request_duration_seconds_count[2m]) > 1
+        for: 2m
+        labels:
+          severity: warning
+          layer: backend
+        annotations:
+          summary: "Backend latency is high"
+          description: "Average Flask request latency is above 1 second."
+
+      - alert: BackendExceptionsDetected
+        expr: increase(flask_http_request_exceptions_total[5m]) > 0
+        for: 30s
+        labels:
+          severity: warning
+          layer: backend
+        annotations:
+          summary: "Backend exceptions detected"
+          description: "Flask backend exported one or more exceptions in the last 5 minutes."
+
+      - alert: TateCopilotErrors
+        expr: increase(tate_copilot_errors_total[5m]) > 0
+        for: 30s
+        labels:
+          severity: warning
+          layer: ai-copilot
+        annotations:
+          summary: "Tate copilot errors detected"
+          description: "Tate copilot returned errors in the last 5 minutes."
+
+      - alert: PredictionEndpointErrors
+        expr: increase(titanic_prediction_errors_total[5m]) > 0
+        for: 30s
+        labels:
+          severity: warning
+          layer: ml
+        annotations:
+          summary: "Prediction endpoint errors detected"
+          description: "The ML prediction endpoint returned errors in the last 5 minutes."
+
+      - alert: GrafanaDown
+        expr: probe_success{instance="http://grafana:3000/api/health"} == 0
+        for: 30s
+        labels:
+          severity: critical
+          layer: visualization
+        annotations:
+          summary: "Grafana is down"
+
+      - alert: AlertmanagerDown
+        expr: probe_success{instance="http://alertmanager:9093/-/healthy"} == 0
+        for: 30s
+        labels:
+          severity: critical
+          layer: alerting
+        annotations:
+          summary: "Alertmanager is down"
+
+      - alert: PyroscopeDown
+        expr: probe_success{instance="http://pyroscope:4040/ready"} == 0
+        for: 30s
+        labels:
+          severity: critical
+          layer: profiling
+        annotations:
+          summary: "Pyroscope is down"
+
+      - alert: MeilisearchDown
+        expr: probe_success{instance="http://meilisearch:7700/health"} == 0
+        for: 30s
+        labels:
+          severity: critical
+          layer: search
+        annotations:
+          summary: "Meilisearch is down"

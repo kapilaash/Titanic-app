@@ -1,0 +1,104 @@
+services:
+  meilisearch:
+    image: getmeili/meilisearch:latest
+    container_name: titanic-meilisearch
+    ports:
+      - "7700:7700"
+    environment:
+      MEILI_MASTER_KEY: masterKey
+      MEILI_ENV: development
+    volumes:
+      - meili_data:/meili_data
+    networks:
+      - titanic_observability
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: titanic-prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--web.enable-lifecycle"
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./observability/prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
+      - prometheus_data:/prometheus
+    depends_on:
+      - alertmanager
+      - blackbox-exporter
+    networks:
+      - titanic_observability
+
+  alertmanager:
+    image: prom/alertmanager:latest
+    container_name: titanic-alertmanager
+    command:
+      - "--config.file=/etc/alertmanager/alertmanager.yml"
+      - "--storage.path=/alertmanager"
+      - "--web.external-url=http://localhost:9093"
+    ports:
+      - "9093:9093"
+    volumes:
+      - ./observability/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - alertmanager_data:/alertmanager
+    networks:
+      - titanic_observability
+
+  blackbox-exporter:
+    image: prom/blackbox-exporter:latest
+    container_name: titanic-blackbox
+    command:
+      - "--config.file=/etc/blackbox_exporter/config.yml"
+    ports:
+      - "9115:9115"
+    volumes:
+      - ./observability/blackbox/blackbox.yml:/etc/blackbox_exporter/config.yml:ro
+    networks:
+      - titanic_observability
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: titanic-grafana
+    ports:
+      - "3001:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_USERS_DEFAULT_THEME: dark
+      GF_INSTALL_PLUGINS: grafana-pyroscope-app
+      GF_FEATURE_TOGGLES_ENABLE: flameGraph
+      GF_METRICS_ENABLED: "true"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    depends_on:
+      - prometheus
+      - pyroscope
+    networks:
+      - titanic_observability
+
+  pyroscope:
+    image: grafana/pyroscope:latest
+    container_name: titanic-pyroscope
+    ports:
+      - "4040:4040"
+    command:
+      - "server"
+    volumes:
+      - pyroscope_data:/var/lib/pyroscope
+    networks:
+      - titanic_observability
+
+networks:
+  titanic_observability:
+    driver: bridge
+
+volumes:
+  meili_data:
+  prometheus_data:
+  alertmanager_data:
+  grafana_data:
+  pyroscope_data:

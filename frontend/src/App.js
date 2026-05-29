@@ -1,558 +1,426 @@
-import React, { useState, useEffect } from 'react';
-import axios from 'axios';
-import DataTable from './components/DataTable';
-import SummaryCards from './components/SummaryCards';
-import SurvivalCharts from './components/SurvivalCharts';
-import CorrelationHeatmap from './components/CorrelationHeatmap';
-import RegressionAnalysis from './components/RegressionAnalysis';
-import AICopilot from './components/AICopilot';
+// App.js
+import React, { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { fetchDatasetInfo } from './api/queries';
+import ErrorBoundary from './components/common/ErrorBoundary';
+import LoadingFallback from './components/common/LoadingFallback';
+import FeatureShowcase from './components/FeatureShowcase';
+import MissionGuideModal from './components/MissionGuideModal';
+import { markExplorationTask } from './utils/explorationProgress';
 
-// const API_BASE = 'http://localhost:5000/api';
-const API_BASE = 'https://titanic-app-production.up.railway.app/api';
+const DataTable = lazy(() => import('./components/DataTable'));
+const SummaryCards = lazy(() => import('./components/SummaryCards'));
+const SurvivalCharts = lazy(() => import('./components/SurvivalCharts'));
+const CorrelationHeatmap = lazy(() => import('./components/CorrelationHeatmap'));
+const RegressionAnalysis = lazy(() => import('./components/RegressionAnalysis'));
+const AICopilot = lazy(() => import('./components/AICopilot'));
+const DashboardOverview = lazy(() => import('./components/DashboardOverview'));
+
+const navigationTaskMap = {
+  dashboard: 'dashboardViewed',
+  analysis: 'analysisViewed',
+  regression: 'mlViewed',
+  data: 'dataExplorerOpened',
+  engineering: 'buildStoryViewed',
+};
+
+const getConnectionCopy = (status) => {
+  if (status === 'connected') return 'Live backend connected';
+  if (status === 'connecting') return 'Connecting to backend';
+  return 'Backend unavailable';
+};
 
 function App() {
-  const [datasetInfo, setDatasetInfo] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
   const [activeView, setActiveView] = useState('dashboard');
-  const [connectionStatus, setConnectionStatus] = useState('checking');
-  const [showCopilotIntro, setShowCopilotIntro] = useState(true);
+  const [mountedViews, setMountedViews] = useState(() => new Set(['dashboard']));
+  const dashboardMetricsRef = useRef(null);
+  const [showCopilotIntro, setShowCopilotIntro] = useState(() => (
+    typeof window !== 'undefined' && window.localStorage.getItem('copilotIntroDismissed') !== 'true'
+  ));
 
-  useEffect(() => {
-    fetchDatasetInfo();
-  }, []);
+  const {
+    data: datasetInfo,
+    isLoading,
+    isError,
+    refetch,
+    isFetching,
+  } = useQuery({
+    queryKey: ['dataset-info'],
+    queryFn: fetchDatasetInfo,
+    staleTime: 1000 * 60 * 5,
+  });
 
-  const fetchDatasetInfo = async () => {
-    try {
-      setLoading(true);
-      setConnectionStatus('connecting');
-      const response = await axios.get(`${API_BASE}/info`);
-      setDatasetInfo(response.data);
-      setConnectionStatus('connected');
-      setLoading(false);
-    } catch (err) {
-      console.error('Connection error:', err);
-      setError('Unable to connect to the backend server. Please check if the service is running.');
-      setConnectionStatus('error');
-      setLoading(false);
+  const connectionStatus = isError
+    ? 'error'
+    : isLoading || isFetching
+      ? 'connecting'
+      : 'connected';
+
+  const navigationItems = useMemo(() => [
+    { id: 'dashboard', label: 'Command', icon: '◎', description: 'Executive OS' },
+    { id: 'analysis', label: 'Analysis', icon: '▧', description: 'Signals' },
+    { id: 'regression', label: 'ML Lab', icon: '◈', description: 'Model' },
+    { id: 'data', label: 'Explorer', icon: '▤', description: 'Records' },
+    { id: 'engineering', label: 'Build', icon: '⌬', description: 'Architecture' },
+  ], []);
+
+  const handleNavigate = (viewId) => {
+    setActiveView(viewId);
+    setMountedViews((previousViews) => {
+      if (previousViews.has(viewId)) return previousViews;
+      const nextViews = new Set(previousViews);
+      nextViews.add(viewId);
+      return nextViews;
+    });
+
+    if (navigationTaskMap[viewId]) {
+      markExplorationTask(navigationTaskMap[viewId]);
     }
   };
 
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 flex items-center justify-center">
-        <div className="text-center animate-fade-in">
-          <div className="relative">
-            <div className="w-16 h-16 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin mx-auto"></div>
-            <div className="absolute inset-0 flex items-center justify-center">
-              <div className="w-8 h-8 bg-gradient-to-r from-blue-600 to-purple-600 rounded-full animate-pulse"></div>
-            </div>
-          </div>
-          <p className="mt-6 text-gray-600 font-medium text-lg">Loading Titanic Analytics Dashboard</p>
-          <p className="text-sm text-gray-500 mt-2">Connecting to data services...</p>
-        </div>
-      </div>
-    );
-  }
+  useEffect(() => {
+    const target = dashboardMetricsRef.current;
+    if (!target || activeView !== 'dashboard') return undefined;
 
-  if (error) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-red-50 via-white to-orange-50 flex items-center justify-center px-4">
-        <div className="max-w-md w-full animate-slide-up">
-          <div className="bg-white rounded-2xl shadow-xl border border-red-200 p-8 text-center">
-            <div className="w-16 h-16 bg-gradient-to-r from-red-500 to-orange-500 rounded-full flex items-center justify-center mx-auto mb-4">
-              <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-            </div>
-            <h3 className="text-xl font-bold text-gray-900 mb-2">Connection Error</h3>
-            <p className="text-gray-600 mb-6 leading-relaxed">{error}</p>
-            <div className="space-y-3">
-              <button 
-                onClick={fetchDatasetInfo}
-                className="w-full bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white font-semibold py-3 px-6 rounded-xl transition-all duration-300 transform hover:scale-105 shadow-lg"
-              >
-                🔄 Retry Connection
-              </button>
-              <button 
-                onClick={() => window.location.reload()}
-                className="w-full bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium py-3 px-6 rounded-xl transition-all duration-300"
-              >
-                Reload Page
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting && entry.intersectionRatio >= 0.35) {
+          markExplorationTask('dashboardViewed');
+          observer.disconnect();
+        }
+      },
+      { threshold: [0.35] }
     );
-  }
 
-  const navigationItems = [
-    { 
-      id: 'dashboard', 
-      label: 'Dashboard', 
-      icon: '📊',
-      description: 'Overview & Metrics'
-    },
-    { 
-      id: 'analysis', 
-      label: 'Analysis', 
-      icon: '📈',
-      description: 'Feature Analysis'
-    },
-    { 
-      id: 'regression', 
-      label: 'ML Insights', 
-      icon: '🤖',
-      description: 'AI Predictions'
-    },
-    { 
-      id: 'data', 
-      label: 'Data Explorer', 
-      icon: '📋',
-      description: 'Raw Data'
+    observer.observe(target);
+    return () => observer.disconnect();
+  }, [activeView]);
+
+  const getViewClassName = (viewId) => (
+    activeView === viewId ? 'block animate-fade-in' : 'hidden'
+  );
+
+  const shouldMountView = (viewId) => mountedViews.has(viewId);
+
+  const dismissIntro = (persist = false) => {
+    setShowCopilotIntro(false);
+    if (persist && typeof window !== 'undefined') {
+      window.localStorage.setItem('copilotIntroDismissed', 'true');
     }
-  ];
+  };
+
+  if (isLoading) {
+    return (
+      <div className="app-shell min-h-screen text-slate-100">
+        <div className="app-aurora" />
+        <div className="relative z-10 flex min-h-screen items-center justify-center px-6">
+          <div className="premium-card max-w-md p-8 text-center animate-fade-in">
+            <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-[2rem] border border-cyan-300/20 bg-cyan-300/10 shadow-[0_0_70px_rgba(34,211,238,0.24)]">
+              <div className="h-10 w-10 rounded-full border-2 border-cyan-200 border-t-transparent animate-spin" />
+            </div>
+            <p className="mt-7 text-xs font-black uppercase tracking-[0.34em] text-cyan-200">Titanic Intelligence OS</p>
+            <h1 className="mt-3 text-3xl font-black tracking-[-0.05em] text-white">Connecting command center</h1>
+            <p className="mt-3 text-sm leading-relaxed text-slate-400">Loading backend data, model signals, and workspace state.</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (isError) {
+    return (
+      <div className="app-shell min-h-screen text-slate-100">
+        <div className="app-aurora" />
+        <div className="relative z-10 flex min-h-screen items-center justify-center px-6">
+          <div className="premium-card max-w-lg p-8 text-center animate-slide-up">
+            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-3xl border border-rose-300/30 bg-rose-500/10 text-3xl text-rose-200">!</div>
+            <p className="mt-6 text-xs font-black uppercase tracking-[0.3em] text-rose-200">Connection Error</p>
+            <h1 className="mt-3 text-3xl font-black tracking-[-0.04em] text-white">Backend service is not reachable</h1>
+            <p className="mt-4 text-sm leading-relaxed text-slate-400">
+              The interface is ready, but the live dataset service could not be reached. Start the Flask backend or verify the API base URL.
+            </p>
+            <div className="mt-7 grid gap-3 sm:grid-cols-2">
+              <button
+                type="button"
+                onClick={() => refetch()}
+                className="rounded-2xl bg-white px-5 py-3 text-sm font-black text-slate-950 transition hover:-translate-y-0.5 hover:bg-cyan-50"
+              >
+                Retry connection
+              </button>
+              <button
+                type="button"
+                onClick={() => window.location.reload()}
+                className="rounded-2xl border border-white/10 bg-white/[0.06] px-5 py-3 text-sm font-black text-white transition hover:-translate-y-0.5 hover:bg-white/[0.1]"
+              >
+                Reload page
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 via-blue-50 to-purple-50">
-      {/* Optimized Header */}
-      <header className="bg-white/95 backdrop-blur-lg border-b border-gray-200/60 sticky top-0 z-50 shadow-sm">
+    <div className="app-shell min-h-screen text-slate-100">
+      <div className="app-aurora" />
+      <div className="app-grid" />
+
+      <header className="sticky top-0 z-50 border-b border-white/10 bg-slate-950/70 backdrop-blur-2xl">
         <div className="container mx-auto px-4">
-          <div className="flex flex-col md:flex-row justify-between items-center py-4 gap-4 md:gap-0">
-            {/* Logo & Title */}
-            <div className="flex items-center gap-3">
-              <div className="relative">
-                <div className="w-10 h-10 md:w-12 md:h-12 bg-gradient-to-br from-blue-600 to-purple-600 rounded-2xl flex items-center justify-center shadow-lg">
-                  <span className="text-white font-bold text-base md:text-lg">🚢</span>
-                </div>
-                <div className="absolute -top-1 -right-1 w-3 h-3 md:w-4 md:h-4 bg-green-500 rounded-full border-2 border-white animate-pulse"></div>
+          <div className="flex flex-col gap-4 py-4 lg:flex-row lg:items-center lg:justify-between">
+            <button
+              type="button"
+              onClick={() => handleNavigate('dashboard')}
+              className="group flex items-center gap-3 text-left"
+            >
+              <div className="relative flex h-12 w-12 items-center justify-center overflow-hidden rounded-2xl border border-cyan-200/20 bg-white/[0.06] shadow-[0_0_45px_rgba(34,211,238,0.16)]">
+                <span className="absolute inset-0 bg-[radial-gradient(circle_at_30%_20%,rgba(34,211,238,0.35),transparent_45%)]" />
+                <img src="/logo.png" alt="Titanic Analytics logo" className="relative h-9 w-9 object-contain" />
+                <span className="absolute right-1 top-1 h-2.5 w-2.5 rounded-full bg-emerald-300 shadow-[0_0_14px_rgba(110,231,183,0.9)]" />
               </div>
               <div>
-                <h1 className="text-xl md:text-2xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent leading-tight">
-                  Titanic Analytics
-                </h1>
-                <p className="text-xs md:text-sm text-gray-500 flex items-center gap-2">
-                  <span className="hidden sm:inline">Real-time passenger analysis</span>
-                  <span className="inline sm:hidden">Passenger analysis</span>
-                  <span className="w-1 h-1 bg-gray-400 rounded-full hidden md:inline"></span>
-                  <span className={`text-xs font-medium hidden md:inline ${
-                    connectionStatus === 'connected' ? 'text-green-600' : 'text-yellow-600'
-                  }`}>
-                    {connectionStatus === 'connected' ? '● Connected' : '● Connecting...'}
-                  </span>
-                </p>
+                <div className="text-[10px] font-black uppercase tracking-[0.32em] text-cyan-200/80">Titanic Intelligence</div>
+                <h1 className="text-xl font-black tracking-[-0.04em] text-white sm:text-2xl">Command Platform</h1>
               </div>
-            </div>
-            
-            {/* Navigation */}
-            <nav className="flex gap-1 bg-white/50 rounded-2xl p-1 border border-gray-200/50 backdrop-blur-sm w-full md:w-auto justify-between">
-              {navigationItems.map((item) => (
-                <button
-                  key={item.id}
-                  onClick={() => setActiveView(item.id)}
-                  className={`flex flex-col items-center px-3 py-2 rounded-xl text-xs md:text-sm font-medium transition-all duration-300 min-w-[60px] md:min-w-[80px] group ${
-                    activeView === item.id
-                      ? 'bg-gradient-to-r from-blue-500 to-purple-600 text-white shadow-lg transform scale-105'
-                      : 'text-gray-600 hover:text-gray-900 hover:bg-white/80'
-                  }`}
-                >
-                  <span className="text-base md:text-lg mb-0.5 md:mb-1">{item.icon}</span>
-                  <span className="font-semibold leading-tight">{item.label}</span>
-                  <span className={`text-xs mt-0.5 hidden lg:block ${
-                    activeView === item.id ? 'text-blue-100' : 'text-gray-400'
-                  }`}>
-                    {item.description}
-                  </span>
-                </button>
-              ))}
+            </button>
+
+            <nav className="glass-panel flex gap-1 overflow-x-auto rounded-[1.35rem] p-1 mobile-scroll lg:max-w-none">
+              {navigationItems.map((item) => {
+                const isActive = activeView === item.id;
+                return (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => handleNavigate(item.id)}
+                    className={`group min-w-[6rem] rounded-2xl px-3 py-3 text-center transition-all duration-300 lg:min-w-[7.5rem] ${
+                      isActive
+                        ? 'bg-white text-slate-950 shadow-[0_18px_45px_rgba(15,23,42,0.35)]'
+                        : 'text-slate-400 hover:bg-white/[0.08] hover:text-white'
+                    }`}
+                  >
+                    <div className="text-lg leading-none">{item.icon}</div>
+                    <div className="mt-1 text-xs font-black uppercase tracking-[0.12em]">{item.label}</div>
+                    <div className={`mt-0.5 hidden text-[10px] font-semibold lg:block ${isActive ? 'text-slate-500' : 'text-slate-500'}`}>
+                      {item.description}
+                    </div>
+                  </button>
+                );
+              })}
             </nav>
-            
-            {/* Dataset Info */}
-            <div className="hidden md:flex items-center gap-3 bg-gradient-to-r from-blue-50 to-purple-50 rounded-2xl px-4 py-2 border border-blue-200">
-              <div className="text-right">
-                <div className="text-sm font-semibold text-gray-900">
-                  {datasetInfo?.shape[0]} passengers
-                </div>
-                <div className="text-xs text-gray-600">
-                  {datasetInfo?.shape[1]} features
-                </div>
+
+            <div className="glass-panel flex items-center justify-between gap-4 rounded-[1.35rem] px-4 py-3 lg:min-w-[16rem]">
+              <div>
+                <div className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">System</div>
+                <div className="mt-1 text-sm font-black text-white">{getConnectionCopy(connectionStatus)}</div>
               </div>
-              <div className="w-8 h-8 bg-white rounded-xl flex items-center justify-center shadow-sm">
-                <span className="text-blue-600 text-sm">📊</span>
+              <div className="text-right">
+                <div className="text-lg font-black tracking-[-0.04em] text-cyan-100">
+                  {datasetInfo?.shape?.[0] ? new Intl.NumberFormat('en-US').format(datasetInfo.shape[0]) : '—'}
+                </div>
+                <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-500">records</div>
               </div>
             </div>
           </div>
         </div>
       </header>
+
       {showCopilotIntro && (
-        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-[60] flex items-center justify-center p-4 animate-fade-in">
-          <div className="bg-white rounded-2xl max-w-md w-full max-h-[85vh] overflow-hidden flex flex-col shadow-2xl animate-slide-up border border-blue-200 mx-4">
-            {/* Header - Fixed at top */}
-            <div className="flex items-center justify-between p-4 sm:p-6 border-b border-gray-200 bg-gradient-to-r from-blue-50 to-purple-50 flex-shrink-0">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 sm:w-12 sm:h-12 bg-gradient-to-r from-blue-600 to-purple-600 rounded-xl flex items-center justify-center">
-                  <span className="text-white text-lg sm:text-xl">🤖</span>
-                </div>
-                <div>
-                  <h3 className="font-bold text-gray-900 text-base sm:text-lg md:text-xl">Meet Your AI Copilot</h3>
-                  <p className="text-xs sm:text-sm text-gray-600">Personal guide for Titanic analytics</p>
-                </div>
-              </div>
-              <button 
-                onClick={() => setShowCopilotIntro(false)}
-                className="text-gray-400 hover:text-gray-600 text-xl sm:text-2xl p-1 -mr-2"
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/80 p-4 backdrop-blur-xl animate-fade-in">
+          <div className="premium-card w-full max-w-xl overflow-hidden animate-slide-up">
+            <div className="relative p-6 sm:p-8">
+              <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-cyan-300/70 to-transparent" />
+              <button
+                type="button"
+                onClick={() => dismissIntro(false)}
+                className="absolute right-4 top-4 rounded-full border border-white/10 bg-white/[0.06] px-3 py-1.5 text-xs font-black text-slate-300 transition hover:bg-white/[0.1] hover:text-white"
                 aria-label="Close introduction"
               >
-                ✕
+                Close
               </button>
-            </div>
-            
-            {/* Scrollable Content Area */}
-            <div className="flex-1 overflow-y-auto p-4 sm:p-6">
-              <div className="space-y-4 sm:space-y-6">
-                <div className="flex items-start gap-3 sm:gap-4">
-                  <div className="w-10 h-10 sm:w-12 sm:h-12 bg-blue-100 rounded-lg flex items-center justify-center flex-shrink-0">
-                    <span className="text-blue-600 text-base sm:text-lg">🎯</span>
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-gray-700 text-sm sm:text-base leading-relaxed">
-                      <strong className="font-semibold">I can help you navigate</strong> through dashboards, explain insights, and answer questions about Titanic data.
-                    </p>
-                  </div>
+
+              <div className="flex items-start gap-4">
+                <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-[1.4rem] border border-cyan-200/20 bg-white shadow-[0_0_50px_rgba(34,211,238,0.22)]">
+                  <img src="/Tate.svg" alt="Tate AI assistant" className="h-12 w-12 object-contain" />
                 </div>
-                
-                <div className="flex items-start gap-3 sm:gap-4">
-                  <div className="w-10 h-10 sm:w-12 sm:h-12 bg-purple-100 rounded-lg flex items-center justify-center flex-shrink-0">
-                    <span className="text-purple-600 text-base sm:text-lg">🎤</span>
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-gray-700 text-sm sm:text-base leading-relaxed">
-                      <strong className="font-semibold">Try voice commands</strong> (coming soon!) to ask questions naturally while exploring.
-                    </p>
-                  </div>
-                </div>
-                
-                {/* Additional Mobile-Specific Tip */}
-                <div className="bg-gradient-to-r from-blue-50 to-purple-50 rounded-xl p-3 sm:p-4 border border-blue-100 mt-4">
-                  <div className="flex items-center gap-2 text-blue-700">
-                    <span className="text-lg">📱</span>
-                    <span className="text-xs sm:text-sm font-medium">Mobile Friendly</span>
-                  </div>
-                  <p className="text-xs sm:text-sm text-gray-600 mt-1">
-                    The AI Copilot works perfectly on all devices - tap the floating button to start chatting!
+                <div className="pr-12">
+                  <p className="kicker text-cyan-200">Meet Tate</p>
+                  <h2 className="mt-2 text-3xl font-black tracking-[-0.05em] text-white sm:text-4xl">Your cognitive interface for the platform.</h2>
+                  <p className="mt-4 text-sm leading-relaxed text-slate-400">
+                    Tate explains the engineering, guides visitors through the product, and answers backend-aware questions about passengers, survival patterns, and model behavior.
                   </p>
                 </div>
               </div>
-            </div>
-            
-            {/* Footer - Fixed at bottom */}
-            <div className="p-4 sm:p-6 border-t border-gray-200 bg-gray-50 flex-shrink-0">
-              <div className="flex flex-col sm:flex-row justify-between items-center gap-3 sm:gap-4">
-                <div className="w-full sm:w-auto order-2 sm:order-1">
-                  <label className="flex items-center justify-center sm:justify-start gap-2 text-xs text-gray-500">
-                    <input 
-                      type="checkbox" 
-                      className="rounded text-blue-600 w-4 h-4"
-                      defaultChecked
-                      onChange={(e) => {
-                        if(!e.target.checked) {
-                          localStorage.setItem('copilotIntroDismissed', 'true');
-                        }
-                      }}
-                    />
-                    Don't show this again
-                  </label>
-                </div>
-                
-                <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto order-1 sm:order-2">
-                  <button
-                    onClick={() => setShowCopilotIntro(false)}
-                    className="px-4 py-2.5 sm:py-2 text-gray-600 hover:text-gray-800 text-sm font-medium rounded-lg hover:bg-gray-100 transition-colors w-full sm:w-auto"
-                  >
-                    Skip for now
-                  </button>
-                  <button
-                    onClick={() => {
-                      setShowCopilotIntro(false);
-                      // Use ref instead of querySelector for better reliability
-                      setTimeout(() => {
-                        const copilotButton = document.querySelector('[aria-label="Open AI Copilot"]');
-                        if (copilotButton) {
-                          copilotButton.click();
-                        } else {
-                          // Fallback: show toast or open via state if you have ref
-                          console.log("Copilot button not found");
-                        }
-                      }, 300);
-                    }}
-                    className="bg-gradient-to-r from-blue-600 to-purple-600 text-white px-5 py-2.5 sm:py-2 rounded-xl font-medium hover:opacity-90 transition-opacity text-sm sm:text-base shadow-lg w-full sm:w-auto"
-                  >
-                    Meet the Copilot →
-                  </button>
-                </div>
+
+              <div className="mt-7 grid gap-3 sm:grid-cols-3">
+                {[
+                  ['Guided', 'Navigate the product without guessing.'],
+                  ['Backend-aware', 'Ask about live metrics and records.'],
+                  ['Portfolio-ready', 'Show architecture, not only charts.'],
+                ].map(([title, description]) => (
+                  <div key={title} className="rounded-2xl border border-white/10 bg-white/[0.055] p-4">
+                    <div className="text-sm font-black text-white">{title}</div>
+                    <p className="mt-2 text-xs leading-relaxed text-slate-500">{description}</p>
+                  </div>
+                ))}
               </div>
-              
-              {/* Progress indicator for mobile */}
-              <div className="flex justify-center mt-4 sm:hidden">
-                <div className="flex gap-2">
-                  {[1, 2, 3].map((dot, idx) => (
-                    <div 
-                      key={dot}
-                      className={`w-2 h-2 rounded-full ${idx === 0 ? 'bg-blue-600' : 'bg-gray-300'}`}
-                    />
-                  ))}
-                </div>
+
+              <div className="mt-7 flex flex-col gap-3 sm:flex-row sm:justify-end">
+                <button
+                  type="button"
+                  onClick={() => dismissIntro(true)}
+                  className="rounded-2xl border border-white/10 bg-white/[0.06] px-5 py-3 text-sm font-black text-slate-200 transition hover:bg-white/[0.1]"
+                >
+                  Do not show again
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    dismissIntro(false);
+                    window.setTimeout(() => {
+                      document.querySelector('[aria-label="Open Tate assistant"]')?.click();
+                    }, 200);
+                  }}
+                  className="rounded-2xl bg-white px-5 py-3 text-sm font-black text-slate-950 transition hover:-translate-y-0.5 hover:bg-cyan-50"
+                >
+                  Open Tate →
+                </button>
               </div>
             </div>
           </div>
         </div>
       )}
-      {/* Main Content */}
-      <main className="container mx-auto px-4 py-6 md:py-8">
-        {/* Dashboard View */}
-        {activeView === 'dashboard' && (
-          <div className="space-y-8 animate-fade-in">
-            {/* Welcome Header */}
-            <section className="text-center px-2">
-              <h2 className="text-2xl md:text-3xl lg:text-4xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent mb-4 leading-tight md:leading-normal">
-                Titanic Passenger Analytics
-              </h2>
-              <p className="text-base md:text-lg text-gray-600 max-w-3xl mx-auto leading-relaxed">
-                Explore comprehensive insights from the Titanic dataset with interactive visualizations, 
-                machine learning predictions, and detailed passenger analysis.
-              </p>
-            </section>
 
-            {/* Key Metrics */}
-            <section>
-              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-6 gap-4">
+      <main className="relative z-10 container mx-auto px-4 py-6 md:py-10">
+        {shouldMountView('dashboard') && (
+          <div className={`${getViewClassName('dashboard')} space-y-8`}>
+            <section ref={dashboardMetricsRef}>
+              <ErrorBoundary>
+                <Suspense fallback={<LoadingFallback label="Loading command center..." />}>
+                  <DashboardOverview
+                    datasetInfo={datasetInfo}
+                    connectionStatus={connectionStatus}
+                    onNavigate={handleNavigate}
+                  />
+                </Suspense>
+              </ErrorBoundary>
+            </section>
+          </div>
+        )}
+
+        {shouldMountView('analysis') && (
+          <div className={`${getViewClassName('analysis')} space-y-8`}>
+            <section className="premium-card p-5 md:p-8">
+              <div className="mb-8 flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
                 <div>
-                  <h2 className="text-xl md:text-2xl lg:text-3xl font-bold text-gray-900 leading-tight">
-                    Key Metrics
-                  </h2>
-                  <p className="text-gray-600 mt-2 text-sm md:text-base">
-                    Real-time dataset overview and statistics
+                  <p className="kicker text-cyan-200">Signal Analysis</p>
+                  <h2 className="mt-3 text-4xl font-black tracking-[-0.06em] text-white md:text-6xl">Who survived?</h2>
+                  <p className="mt-4 max-w-3xl text-sm leading-relaxed text-slate-400 md:text-base">
+                    Survival was not random. Explore class, gender, title, embarkation, and feature relationships through backend-driven visual evidence.
                   </p>
                 </div>
-                <div className="flex items-center gap-2 text-sm text-gray-500 bg-white/50 rounded-xl px-4 py-2">
-                  <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
-                  <span>Live Data</span>
+                <Suspense fallback={<LoadingFallback label="Loading metrics..." />}>
+                  <SummaryCards compact />
+                </Suspense>
+              </div>
+
+              <div className="grid gap-6 xl:grid-cols-[minmax(25rem,0.72fr)_minmax(0,1.28fr)]">
+                <div className="min-w-0 rounded-[2rem] border border-white/10 bg-slate-950/50 p-4 md:p-6">
+                  <ErrorBoundary>
+                    <Suspense fallback={<LoadingFallback label="Loading survival charts..." />}>
+                      <SurvivalCharts />
+                    </Suspense>
+                  </ErrorBoundary>
+                </div>
+                <div className="min-w-0 rounded-[2rem] border border-white/10 bg-slate-950/50 p-4 md:p-6">
+                  <ErrorBoundary>
+                    <Suspense fallback={<LoadingFallback label="Loading correlation heatmap..." />}>
+                      <CorrelationHeatmap />
+                    </Suspense>
+                  </ErrorBoundary>
                 </div>
               </div>
-              <SummaryCards />
             </section>
+          </div>
+        )}
 
-            {/* Survival Analysis */}
-            <section>
-              <div className="bg-white rounded-2xl md:rounded-3xl shadow-xl border border-gray-200/60 p-5 md:p-6 lg:p-8">
-                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-6 gap-4">
+        {shouldMountView('regression') && (
+          <div className={getViewClassName('regression')}>
+            <section className="premium-card p-5 md:p-8">
+              <div className="mb-8 max-w-4xl">
+                <p className="kicker text-violet-200">Machine Learning Lab</p>
+                <h2 className="mt-3 text-4xl font-black tracking-[-0.06em] text-white md:text-6xl">Model intelligence, made visible.</h2>
+                <p className="mt-4 text-sm leading-relaxed text-slate-400 md:text-base">
+                  Inspect performance, feature impact, and prediction behavior from the backend model layer without hardcoding frontend claims.
+                </p>
+              </div>
+              <ErrorBoundary>
+                <Suspense fallback={<LoadingFallback label="Loading machine learning insights..." />}>
+                  <RegressionAnalysis />
+                </Suspense>
+              </ErrorBoundary>
+            </section>
+          </div>
+        )}
+
+        {shouldMountView('data') && (
+          <div className={getViewClassName('data')}>
+            <section className="premium-card overflow-hidden">
+              <div className="border-b border-white/10 p-5 md:p-8">
+                <p className="kicker text-emerald-200">Intelligence Explorer</p>
+                <div className="mt-3 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
                   <div>
-                    <h2 className="text-xl md:text-2xl lg:text-3xl font-bold text-gray-900 leading-tight">
-                      Survival Analysis
-                    </h2>
-                    <p className="text-gray-600 mt-2 text-sm md:text-base">
-                      Interactive charts showing survival patterns
+                    <h2 className="text-4xl font-black tracking-[-0.06em] text-white md:text-6xl">Search the passenger universe.</h2>
+                    <p className="mt-4 max-w-3xl text-sm leading-relaxed text-slate-400 md:text-base">
+                      Dataset-wide search, server-backed sorting, and paginated records keep the interface fast while still feeling exploratory.
                     </p>
                   </div>
-                  <div className="w-10 h-10 bg-gradient-to-r from-blue-500 to-purple-600 rounded-xl flex items-center justify-center text-white">
-                    📈
+                  <div className="glass-panel rounded-2xl px-5 py-4 text-right">
+                    <div className="text-2xl font-black text-white">{datasetInfo?.shape?.[0] ? new Intl.NumberFormat('en-US').format(datasetInfo.shape[0]) : '—'}</div>
+                    <div className="text-[10px] font-black uppercase tracking-[0.22em] text-slate-500">indexed records</div>
                   </div>
                 </div>
-                <SurvivalCharts />
               </div>
-            </section>
-
-            {/* Feature Highlights */}
-            <section className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              <div className="bg-gradient-to-br from-blue-50 to-cyan-100 rounded-2xl md:rounded-3xl p-5 md:p-6 border border-blue-200">
-                <div className="w-10 h-10 md:w-12 md:h-12 bg-white rounded-2xl flex items-center justify-center text-blue-600 text-lg md:text-xl mb-4 shadow-sm">
-                  🔍
-                </div>
-                <h3 className="font-bold text-gray-900 text-lg md:text-lg mb-3">Dataset Overview</h3>
-                <p className="text-gray-700 text-sm md:text-sm leading-relaxed">
-                  Comprehensive analysis of {datasetInfo?.shape[0]} passengers with {datasetInfo?.shape[1]} features including 
-                  survival status, class, demographics, and travel details.
-                </p>
-              </div>
-              
-              <div className="bg-gradient-to-br from-purple-50 to-pink-100 rounded-2xl md:rounded-3xl p-5 md:p-6 border border-purple-200">
-                <div className="w-10 h-10 md:w-12 md:h-12 bg-white rounded-2xl flex items-center justify-center text-purple-600 text-lg md:text-xl mb-4 shadow-sm">
-                  🎯
-                </div>
-                <h3 className="font-bold text-gray-900 text-lg md:text-lg mb-3">Analysis Scope</h3>
-                <ul className="text-gray-700 text-sm md:text-sm space-y-2">
-                  <li className="flex items-start gap-2">
-                    <div className="w-1.5 h-1.5 bg-purple-500 rounded-full mt-1.5 flex-shrink-0"></div>
-                    <span>Survival rate patterns by demographics</span>
-                  </li>
-                  <li className="flex items-start gap-2">
-                    <div className="w-1.5 h-1.5 bg-purple-500 rounded-full mt-1.5 flex-shrink-0"></div>
-                    <span>Passenger class impact analysis</span>
-                  </li>
-                  <li className="flex items-start gap-2">
-                    <div className="w-1.5 h-1.5 bg-purple-500 rounded-full mt-1.5 flex-shrink-0"></div>
-                    <span>Feature correlation studies</span>
-                  </li>
-                  <li className="flex items-start gap-2">
-                    <div className="w-1.5 h-1.5 bg-purple-500 rounded-full mt-1.5 flex-shrink-0"></div>
-                    <span>Predictive modeling insights</span>
-                  </li>
-                </ul>
-              </div>
-              
-              <div className="bg-gradient-to-br from-green-50 to-emerald-100 rounded-2xl md:rounded-3xl p-5 md:p-6 border border-green-200">
-                <div className="w-10 h-10 md:w-12 md:h-12 bg-white rounded-2xl flex items-center justify-center text-green-600 text-lg md:text-xl mb-4 shadow-sm">
-                  ⚡
-                </div>
-                <h3 className="font-bold text-gray-900 text-lg md:text-lg mb-3">Technical Stack</h3>
-                <div className="flex flex-wrap gap-2">
-                  {['React', 'Tailwind', 'Flask', 'Pandas', 'Scikit-learn', 'Python'].map((tech) => (
-                    <span key={tech} className="bg-white/80 text-gray-700 px-3 py-1.5 rounded-xl text-xs font-semibold shadow-sm">
-                      {tech}
-                    </span>
-                  ))}
-                </div>
-              </div>
+              <ErrorBoundary>
+                <Suspense fallback={<LoadingFallback label="Loading passenger explorer..." />}>
+                  <DataTable />
+                </Suspense>
+              </ErrorBoundary>
             </section>
           </div>
         )}
 
-        {/* Analysis View */}
-        {activeView === 'analysis' && (
-          <div className="space-y-8 animate-fade-in">
-            <section>
-              <div className="text-center mb-8">
-                <h2 className="text-2xl md:text-3xl lg:text-4xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent mb-4 leading-tight md:leading-normal">
-                  Feature Analysis
-                </h2>
-                <p className="text-base md:text-lg text-gray-600">
-                  Explore relationships and patterns in passenger data
-                </p>
-              </div>
-              
-              <div className="bg-white rounded-2xl md:rounded-3xl shadow-xl border border-gray-200/60 p-5 md:p-6 lg:p-8">
-                <h3 className="text-xl md:text-2xl font-bold text-gray-900 mb-6">Feature Correlation Matrix</h3>
-                <div className="overflow-x-auto -mx-2 px-2">
-                  <CorrelationHeatmap />
-                </div>
-              </div>
-            </section>
-            
-            <section>
-              <div className="bg-white rounded-2xl md:rounded-3xl shadow-xl border border-gray-200/60 p-5 md:p-6 lg:p-8">
-                <h3 className="text-xl md:text-2xl font-bold text-gray-900 mb-6">Detailed Survival Analysis</h3>
-                <SurvivalCharts />
-              </div>
-            </section>
-          </div>
-        )}
-
-        {/* ML Insights View */}
-        {activeView === 'regression' && (
-          <div className="animate-fade-in">
-            <div className="text-center mb-8">
-              <h2 className="text-2xl md:text-3xl lg:text-4xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent mb-4 leading-tight md:leading-normal">
-                Machine Learning Insights
-              </h2>
-              <p className="text-base md:text-lg text-gray-600 max-w-2xl mx-auto">
-                Advanced predictive analytics using Random Forest classification with 84%+ accuracy
-              </p>
-            </div>
-            <div className="bg-white rounded-2xl md:rounded-3xl shadow-xl border border-gray-200/60 p-5 md:p-6 lg:p-8">
-              <RegressionAnalysis />
-            </div>
-          </div>
-        )}
-
-        {/* Data Explorer View */}
-        {activeView === 'data' && (
-          <div className="animate-fade-in">
-            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-8 gap-4">
-              <div>
-                <h2 className="text-2xl md:text-3xl lg:text-4xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent leading-tight md:leading-normal">
-                  Data Explorer
-                </h2>
-                <p className="text-gray-600 mt-2 text-base md:text-lg">
-                  Interactive exploration of passenger records
-                </p>
-              </div>
-              <div className="flex items-center gap-4">
-                <div className="bg-gradient-to-r from-blue-50 to-purple-50 rounded-2xl px-4 py-2 border border-blue-200">
-                  <div className="text-sm font-semibold text-gray-900">
-                    {datasetInfo?.shape[0]} records
-                  </div>
-                  <div className="text-xs text-gray-600">
-                    Paginated view
-                  </div>
-                </div>
-              </div>
-            </div>
-            <div className="bg-white rounded-2xl md:rounded-3xl shadow-xl border border-gray-200/60 overflow-hidden">
-              <DataTable />
-            </div>
+        {shouldMountView('engineering') && (
+          <div className={`${getViewClassName('engineering')} space-y-8`}>
+            <FeatureShowcase
+              datasetInfo={datasetInfo}
+              connectionStatus={connectionStatus}
+              onNavigate={handleNavigate}
+            />
           </div>
         )}
       </main>
 
-      {/* Optimized Footer */}
-      <footer className="border-t border-gray-200/60 bg-white/80 backdrop-blur-lg mt-12">
-        <div className="container mx-auto px-4 py-8">
-          <div className="flex flex-col md:flex-row justify-between items-center gap-6">
-            {/* Brand */}
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-gradient-to-br from-blue-600 to-purple-600 rounded-2xl flex items-center justify-center">
-                <span className="text-white font-bold">🚢</span>
-              </div>
-              <div>
-                <h3 className="font-bold text-gray-900 text-sm md:text-base">Titanic Data Explorer</h3>
-                <p className="text-xs md:text-sm text-gray-600">Advanced Analytics Dashboard</p>
-              </div>
-            </div>
-            
-            {/* Tech Stack */}
-            <div className="flex flex-wrap justify-center gap-4 md:gap-6 text-xs md:text-sm text-gray-600">
-              <div className="flex items-center gap-2">
-                <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
-                <span>React Frontend</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                <span>Flask Backend</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="w-2 h-2 bg-purple-500 rounded-full"></div>
-                <span>Machine Learning</span>
-              </div>
-            </div>
-            
-            {/* Status */}
-            <div className="flex items-center gap-4 text-sm">
-              <div className={`flex items-center gap-2 ${
-                connectionStatus === 'connected' ? 'text-green-600' : 'text-yellow-600'
-              }`}>
-                <div className={`w-2 h-2 rounded-full animate-pulse ${
-                  connectionStatus === 'connected' ? 'bg-green-500' : 'bg-yellow-500'
-                }`}></div>
-                <span className="text-xs md:text-sm">
-                  {connectionStatus === 'connected' ? 'System Online' : 'Connecting...'}
-                </span>
-              </div>
-            </div>
+      <footer className="relative z-10 mt-12 border-t border-white/10 bg-slate-950/70 backdrop-blur-xl">
+        <div className="container mx-auto flex flex-col gap-5 px-4 py-8 md:flex-row md:items-center md:justify-between">
+          <div>
+            <div className="text-sm font-black text-white">Titanic Intelligence Platform</div>
+            <p className="mt-1 text-xs text-slate-500">React · Flask · Supabase · Meilisearch · ML · Tate AI</p>
           </div>
-          
-          {/* Copyright */}
-          <div className="border-t border-gray-200 mt-8 pt-8 text-center">
-            <p className="text-xs md:text-sm text-gray-500">
-              © 2024 Titanic Analytics Dashboard • Built with modern web technologies
-            </p>
+          <div className="flex flex-wrap gap-2">
+            {['Live Data', 'Backend Metrics', 'Guided UX', 'Portfolio Story'].map((label) => (
+              <span key={label} className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-2 text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">
+                {label}
+              </span>
+            ))}
           </div>
         </div>
       </footer>
-      <AICopilot 
-        activeView={activeView} 
-        onNavigate={setActiveView} // This should be your setActiveView function
-      />
+
+      <Suspense fallback={null}>
+        <AICopilot activeView={activeView} onNavigate={handleNavigate} />
+        <MissionGuideModal activeView={activeView} onNavigate={handleNavigate} />
+      </Suspense>
     </div>
   );
 }

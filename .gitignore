@@ -51,3 +51,32 @@ __pycache__/
 # Virtual environment
 venv/
 env/
+
+# Environment files
+.env
+.env.local
+.env.development
+.env.production
+frontend/.env.development
+frontend/.env.production
+backend/.env
+
+# Dependencies
+node_modules/
+frontend/node_modules/
+backend/venv/
+venv/
+
+# Build outputs
+frontend/build/
+frontend/dist/
+dist/
+build/
+
+# Python cache
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Logs
+*.log

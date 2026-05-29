@@ -1,310 +1,433 @@
-import React, { useState, useEffect } from 'react';
-import axios from 'axios';
+// components/DataTable.js
+import React, { useEffect, useMemo, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { fetchPassengerData } from '../api/queries';
+import { markExplorationTask } from '../utils/explorationProgress';
 
-// const API_BASE = 'http://localhost:5000/api';
-const API_BASE = 'https://titanic-app-production.up.railway.app/api' || 'http://localhost:5000/api';
+const ITEMS_PER_PAGE = 10;
+const SEARCH_DEBOUNCE_MS = 360;
+const TATE_STATE_EVENT = 'titanic-tate-state';
+
+const preferredOrder = [
+  'PassengerId',
+  'Name',
+  'Title',
+  'Sex',
+  'Age',
+  'Pclass',
+  'Ticket',
+  'Cabin',
+  'Embarked',
+  'Fare',
+  'SibSp',
+  'Parch',
+  'FamilySize',
+  'IsAlone',
+  'Survived',
+];
+
+const columnLabels = {
+  PassengerId: 'ID',
+  Pclass: 'Class',
+  SibSp: 'SibSp',
+  Parch: 'Parch',
+  FamilySize: 'Family',
+  IsAlone: 'Alone',
+  Fare: 'Fare',
+  Survived: 'Outcome',
+};
+
+const sortableColumns = new Set(preferredOrder);
+
+const columnClassMap = {
+  PassengerId: 'w-[4.25rem] min-w-[4.25rem]',
+  Name: 'w-[24rem] min-w-[24rem]',
+  Title: 'w-[7rem] min-w-[7rem]',
+  Sex: 'w-[7rem] min-w-[7rem]',
+  Age: 'w-[7rem] min-w-[7rem]',
+  Pclass: 'w-[6rem] min-w-[6rem]',
+  Ticket: 'w-[12rem] min-w-[12rem]',
+  Cabin: 'w-[9rem] min-w-[9rem]',
+  Embarked: 'w-[8rem] min-w-[8rem]',
+  Fare: 'w-[8rem] min-w-[8rem]',
+  SibSp: 'w-[7rem] min-w-[7rem]',
+  Parch: 'w-[7rem] min-w-[7rem]',
+  FamilySize: 'w-[7rem] min-w-[7rem]',
+  IsAlone: 'w-[7rem] min-w-[7rem]',
+  Survived: 'w-[10rem] min-w-[10rem]',
+};
+
+const getOutcomeLabel = (value) => (Number(value) === 1 ? 'Survived' : 'Perished');
+
+const formatScalar = (value, key) => {
+  if (value === null || value === undefined || value === '') return 'Unknown';
+
+  if (key === 'Fare') {
+    const numeric = Number(value);
+    return Number.isFinite(numeric) ? `$${numeric.toFixed(2)}` : 'Unknown';
+  }
+
+  if (key === 'Age') {
+    const numeric = Number(value);
+    return Number.isFinite(numeric) ? `${Math.round(numeric)} yrs` : 'Unknown';
+  }
+
+  if (key === 'IsAlone') return Number(value) === 1 ? 'Yes' : 'No';
+  if (key === 'Survived') return getOutcomeLabel(value);
+
+  return String(value);
+};
+
+const OutcomePill = ({ value }) => {
+  const survived = Number(value) === 1;
+  return (
+    <span className={`inline-flex items-center rounded-full border px-3 py-1 text-[11px] font-black uppercase tracking-[0.12em] ${
+      survived
+        ? 'border-emerald-200/25 bg-emerald-300/10 text-emerald-100'
+        : 'border-rose-200/25 bg-rose-400/10 text-rose-100'
+    }`}>
+      {survived ? 'Survived' : 'Perished'}
+    </span>
+  );
+};
 
 const DataTable = () => {
-  const [data, setData] = useState([]);
-  const [loading, setLoading] = useState(true);
   const [currentPage, setCurrentPage] = useState(1);
-  const [sortConfig, setSortConfig] = useState({ key: null, direction: 'asc' });
+  const [sortConfig, setSortConfig] = useState({ key: '', direction: 'asc' });
   const [searchTerm, setSearchTerm] = useState('');
-  const [itemsPerPage] = useState(10);
-  const [totalRecords, setTotalRecords] = useState(0);
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('');
   const [selectedRow, setSelectedRow] = useState(null);
+  const [isTateOpen, setIsTateOpen] = useState(false);
 
   useEffect(() => {
-    fetchData();
-    fetchTotalCount();
-  }, [currentPage]);
+    const handleTateState = (event) => {
+      setIsTateOpen(Boolean(event.detail?.isOpen));
+    };
 
-  const fetchData = async () => {
-    try {
-      setLoading(true);
-      const response = await axios.get(`${API_BASE}/data`, {
-        params: { page: currentPage, per_page: itemsPerPage }
-      });
-      setData(response.data.data);
-      setTotalRecords(response.data.total_records);
-      setLoading(false);
-    } catch (error) {
-      console.error('Error fetching data:', error);
-      setLoading(false);
+    setIsTateOpen(document.documentElement.classList.contains('tate-panel-open'));
+    window.addEventListener(TATE_STATE_EVENT, handleTateState);
+    return () => window.removeEventListener(TATE_STATE_EVENT, handleTateState);
+  }, []);
+
+  useEffect(() => {
+    const timerId = window.setTimeout(() => {
+      setDebouncedSearchTerm(searchTerm.trim());
+    }, SEARCH_DEBOUNCE_MS);
+
+    return () => window.clearTimeout(timerId);
+  }, [searchTerm]);
+
+  const {
+    data: passengerResponse,
+    isLoading,
+    isFetching,
+    isError,
+  } = useQuery({
+    queryKey: ['passenger-data', currentPage, debouncedSearchTerm, sortConfig.key, sortConfig.direction],
+    queryFn: () => fetchPassengerData({
+      page: currentPage,
+      perPage: ITEMS_PER_PAGE,
+      search: debouncedSearchTerm,
+      sortBy: sortConfig.key,
+      sortDir: sortConfig.direction,
+    }),
+    placeholderData: (previousData) => previousData,
+    staleTime: 1000 * 20,
+  });
+
+  const data = Array.isArray(passengerResponse?.data) ? passengerResponse.data : [];
+  const totalRecords = Number(passengerResponse?.total_records || 0);
+  const totalPages = Number(passengerResponse?.total_pages || Math.max(1, Math.ceil(totalRecords / ITEMS_PER_PAGE)));
+  const searchEngine = passengerResponse?.search_meta?.engine || (debouncedSearchTerm ? 'backend' : 'all records');
+  const loading = isLoading || isFetching;
+  const isSearchActive = searchTerm.trim().length > 0;
+  const isDebouncing = searchTerm.trim() !== debouncedSearchTerm;
+
+  useEffect(() => {
+    if (passengerResponse?.page && Number(passengerResponse.page) !== currentPage) {
+      setCurrentPage(Number(passengerResponse.page));
+    }
+  }, [currentPage, passengerResponse?.page]);
+
+  const columns = useMemo(() => {
+    if (!data.length) return preferredOrder;
+    return preferredOrder.filter((column) => Object.prototype.hasOwnProperty.call(data[0], column));
+  }, [data]);
+
+  const pageNumbers = useMemo(() => {
+    if (totalPages <= 7) {
+      return Array.from({ length: totalPages }, (_, index) => index + 1);
+    }
+
+    const pages = [1];
+    const startPage = Math.max(2, currentPage - 1);
+    const endPage = Math.min(totalPages - 1, currentPage + 1);
+
+    if (startPage > 2) pages.push('ellipsis-start');
+    for (let page = startPage; page <= endPage; page += 1) pages.push(page);
+    if (endPage < totalPages - 1) pages.push('ellipsis-end');
+    pages.push(totalPages);
+    return pages;
+  }, [currentPage, totalPages]);
+
+  const startRecord = totalRecords === 0 ? 0 : (currentPage - 1) * ITEMS_PER_PAGE + 1;
+  const endRecord = Math.min(currentPage * ITEMS_PER_PAGE, totalRecords);
+
+  const handleSearchChange = (event) => {
+    const value = event.target.value;
+    setSearchTerm(value);
+    setCurrentPage(1);
+    setSelectedRow(null);
+
+    if (value.trim().length > 0) {
+      markExplorationTask('passengerSearchUsed');
     }
   };
 
-  const fetchTotalCount = async () => {
-    try {
-      const response = await axios.get(`${API_BASE}/data/count`);
-      setTotalRecords(response.data.total_records);
-    } catch (error) {
-      console.error('Error fetching count:', error);
-    }
+  const clearSearch = () => {
+    setSearchTerm('');
+    setDebouncedSearchTerm('');
+    setCurrentPage(1);
+    setSelectedRow(null);
   };
 
   const handleSort = (key) => {
-    let direction = 'asc';
-    if (sortConfig.key === key && sortConfig.direction === 'asc') {
-      direction = 'desc';
-    }
-    setSortConfig({ key, direction });
-  };
+    if (!sortableColumns.has(key)) return;
 
-  const sortedData = React.useMemo(() => {
-    if (!sortConfig.key) return data;
-    return [...data].sort((a, b) => {
-      const aValue = a[sortConfig.key];
-      const bValue = b[sortConfig.key];
-      if (aValue < bValue) return sortConfig.direction === 'asc' ? -1 : 1;
-      if (aValue > bValue) return sortConfig.direction === 'asc' ? 1 : -1;
-      return 0;
+    setCurrentPage(1);
+    setSelectedRow(null);
+    markExplorationTask('dataSorted');
+
+    setSortConfig((previous) => {
+      if (previous.key === key && previous.direction === 'asc') {
+        return { key, direction: 'desc' };
+      }
+      return { key, direction: 'asc' };
     });
-  }, [data, sortConfig]);
-
-  const filteredData = sortedData.filter(row => 
-    Object.values(row).some(value => 
-      String(value).toLowerCase().includes(searchTerm.toLowerCase())
-    )
-  );
-
-  const formatValue = (value, key) => {
-    if (key === 'Survived') {
-      return value === 1 ? (
-        <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold bg-gradient-to-r from-green-500 to-emerald-600 text-white shadow-sm animate-pulse">
-          ✅ Survived
-        </span>
-      ) : (
-        <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold bg-gradient-to-r from-red-500 to-pink-600 text-white shadow-sm animate-pulse">
-          ❌ Perished
-        </span>
-      );
-    }
-    if (key === 'Fare') return `$${parseFloat(value).toFixed(2)}`;
-    if (key === 'Age') return `${parseInt(value)} yrs`;
-    return value;
   };
 
-  if (loading && data.length === 0) {
+  const handlePageChange = (page) => {
+    if (page < 1 || page > totalPages || page === currentPage) return;
+    setCurrentPage(page);
+    setSelectedRow(null);
+  };
+
+  const selectedPassenger = selectedRow || data[0] || null;
+  const workspaceClassName = isTateOpen
+    ? 'grid gap-0 transition-[padding] duration-300 2xl:grid-cols-[1fr] 2xl:pr-[25rem]'
+    : 'grid gap-0 xl:grid-cols-[minmax(0,1fr)_24rem]';
+
+  if (isError) {
     return (
-      <div className="flex justify-center items-center py-20">
-        <div className="animate-spin rounded-full h-12 w-12 border-4 border-blue-200 border-t-blue-600"></div>
+      <div className="p-6">
+        <div className="rounded-2xl border border-rose-300/20 bg-rose-500/10 p-6 text-rose-100">
+          <h3 className="font-black">Unable to load passenger data</h3>
+          <p className="mt-2 text-sm text-rose-100/80">Please confirm the backend connection and data endpoint.</p>
+        </div>
       </div>
     );
   }
 
-  const columns = data.length > 0 ? Object.keys(data[0]) : [];
-
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="text-center animate-fade-in">
-        <h2 className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-          Passenger Data Explorer
-        </h2>
-        <p className="text-gray-600 mt-2">Interactive exploration of Titanic passenger records</p>
-      </div>
-
-      {/* Stats Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        {[
-          { label: 'Total Passengers', value: totalRecords, icon: '👥', color: 'bg-gradient-to-r from-blue-500 to-cyan-500' },
-          { label: 'Features', value: columns.length, icon: '📊', color: 'bg-gradient-to-r from-purple-500 to-pink-500' },
-          { label: 'Survival Rate', value: `${Math.round((data.filter(row => row.Survived === 1).length / data.length) * 100)}%`, icon: '🛟', color: 'bg-gradient-to-r from-green-500 to-emerald-500' },
-          { label: 'Avg Age', value: `${Math.round(data.reduce((sum, row) => sum + row.Age, 0) / data.length)} yrs`, icon: '🎂', color: 'bg-gradient-to-r from-orange-500 to-red-500' },
-        ].map((stat, index) => (
-          <div
-            key={stat.label}
-            className={`${stat.color} rounded-2xl p-6 text-white shadow-lg transition-transform duration-300 hover:scale-105 animate-slide-up`}
-            style={{ animationDelay: `${index * 100}ms` }}
-          >
-            <div className="flex items-center justify-between">
-              <div>
-                <div className="text-2xl font-bold">{stat.value}</div>
-                <div className="text-sm opacity-90">{stat.label}</div>
-              </div>
-              <div className="text-2xl">{stat.icon}</div>
-            </div>
-          </div>
-        ))}
-      </div>
-
-      {/* Search and Controls */}
-      <div className="bg-white rounded-2xl p-6 shadow-lg border border-gray-200 animate-slide-up">
-        <div className="flex flex-col lg:flex-row gap-4 items-center justify-between">
-          <div className="relative flex-1 w-full">
-            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-              <svg className="h-5 w-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-              </svg>
-            </div>
-            <input
-              type="text"
-              placeholder="Search passengers..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="block w-full pl-10 pr-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-300"
-            />
-          </div>
-          
-          <div className="flex items-center space-x-4 text-sm">
-            <span className="text-gray-600">
-              Page {currentPage} of {Math.ceil(totalRecords / itemsPerPage)}
-            </span>
-            {searchTerm && (
-              <span className="bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-xs font-medium animate-pulse">
-                {filteredData.length} results
-              </span>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* Table */}
-      <div className="bg-white rounded-2xl shadow-xl border border-gray-200 overflow-hidden animate-slide-up">
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead>
-              <tr className="bg-gradient-to-r from-gray-50 to-blue-50">
-                {columns.map((column) => (
-                  <th
-                    key={column}
-                    onClick={() => handleSort(column)}
-                    className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors duration-200 group"
+    <div className={workspaceClassName}>
+      <div className="min-w-0 border-white/10 xl:border-r">
+        <div className="border-b border-white/10 p-5 md:p-6">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex-1">
+              <label htmlFor="passenger-search" className="text-[10px] font-black uppercase tracking-[0.24em] text-emerald-200">
+                Search passenger universe
+              </label>
+              <div className="mt-3 flex items-center gap-3 rounded-[1.35rem] border border-white/10 bg-slate-950/60 px-4 py-3 shadow-inner">
+                <span className="text-slate-500">⌕</span>
+                <input
+                  id="passenger-search"
+                  type="search"
+                  value={searchTerm}
+                  onChange={handleSearchChange}
+                  placeholder="Search name, ticket, cabin, ID, title..."
+                  className="min-w-0 flex-1 bg-transparent text-sm font-semibold text-white placeholder:text-slate-600 focus:outline-none"
+                />
+                {isSearchActive && (
+                  <button
+                    type="button"
+                    onClick={clearSearch}
+                    className="rounded-full border border-white/10 bg-white/[0.06] px-3 py-1 text-xs font-black text-slate-300 transition hover:bg-white/[0.1] hover:text-white"
                   >
-                    <div className="flex items-center space-x-2">
-                      <span>{column}</span>
-                      <div className={`transform transition-transform duration-300 ${
-                        sortConfig.key === column && sortConfig.direction === 'desc' ? 'rotate-180' : ''
-                      } text-gray-400 group-hover:text-gray-600`}>
-                        {sortConfig.key === column ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}
-                      </div>
-                    </div>
-                  </th>
-                ))}
+                    Clear
+                  </button>
+                )}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:w-[32rem]">
+              <div className="rounded-2xl border border-white/10 bg-white/[0.045] p-4">
+                <div className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">Records</div>
+                <div className="mt-1 text-xl font-black text-white">{totalRecords.toLocaleString('en-US')}</div>
+              </div>
+              <div className="rounded-2xl border border-white/10 bg-white/[0.045] p-4">
+                <div className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">Page</div>
+                <div className="mt-1 text-xl font-black text-white">{currentPage}/{totalPages}</div>
+              </div>
+              <div className="rounded-2xl border border-white/10 bg-white/[0.045] p-4">
+                <div className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">Engine</div>
+                <div className="mt-1 truncate text-sm font-black capitalize text-white">{searchEngine.replace(/_/g, ' ')}</div>
+              </div>
+              <div className="rounded-2xl border border-white/10 bg-white/[0.045] p-4">
+                <div className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">Query</div>
+                <div className="mt-1 truncate text-sm font-black text-white">{debouncedSearchTerm || 'All records'}</div>
+              </div>
+            </div>
+          </div>
+
+          {(loading || isDebouncing) && (
+            <div className="mt-4 h-1 overflow-hidden rounded-full bg-white/[0.07]">
+              <div className="h-full w-1/2 animate-[shimmer-line_1.2s_ease-in-out_infinite] rounded-full bg-gradient-to-r from-transparent via-cyan-300 to-transparent" />
+            </div>
+          )}
+        </div>
+
+        <div className="hidden overflow-x-auto mobile-scroll lg:block">
+          <table className="min-w-[1180px] table-fixed divide-y divide-white/10 text-left">
+            <thead className="bg-white/[0.035]">
+              <tr>
+                {columns.map((column) => {
+                  const isSorted = sortConfig.key === column;
+                  return (
+                    <th key={column} scope="col" className={`${columnClassMap[column] || 'w-[8rem] min-w-[8rem]'} whitespace-nowrap px-4 py-4 text-[10px] font-black uppercase tracking-[0.18em] text-slate-500`}>
+                      <button
+                        type="button"
+                        onClick={() => handleSort(column)}
+                        disabled={!sortableColumns.has(column)}
+                        className="inline-flex items-center gap-2 rounded-lg transition hover:text-white disabled:cursor-default disabled:hover:text-slate-500"
+                      >
+                        {columnLabels[column] || column}
+                        <span className={isSorted ? 'text-cyan-200' : 'text-slate-700'}>
+                          {isSorted ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}
+                        </span>
+                      </button>
+                    </th>
+                  );
+                })}
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-200">
-              {filteredData.map((row, index) => (
-                <tr
-                  key={index}
-                  className={`transition-all duration-300 hover:scale-105 hover:bg-blue-50 cursor-pointer ${
-                    selectedRow?.PassengerId === row.PassengerId ? 'bg-blue-50 scale-105' : ''
-                  }`}
-                  onClick={() => setSelectedRow(selectedRow?.PassengerId === row.PassengerId ? null : row)}
-                  style={{ animationDelay: `${index * 50}ms` }}
-                >
-                  {columns.map((column) => (
-                    <td key={column} className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {formatValue(row[column], column)}
-                    </td>
-                  ))}
+
+            <tbody className="divide-y divide-white/10">
+              {data.length > 0 ? data.map((row) => {
+                const isSelected = selectedRow?.PassengerId === row.PassengerId;
+                return (
+                  <tr
+                    key={row.PassengerId || row.Name}
+                    onClick={() => setSelectedRow(row)}
+                    className={`cursor-pointer transition ${isSelected ? 'bg-cyan-300/[0.08]' : 'hover:bg-white/[0.045]'}`}
+                  >
+                    {columns.map((column) => (
+                      <td key={`${row.PassengerId}-${column}`} className={`${columnClassMap[column] || 'w-[8rem] min-w-[8rem]'} px-4 py-4 align-middle text-sm text-slate-300`}>
+                        {column === 'Survived' ? (
+                          <OutcomePill value={row[column]} />
+                        ) : (
+                          <div className={`${column === 'Name' ? 'font-black text-white' : 'font-semibold'} truncate`} title={formatScalar(row[column], column)}>
+                            {formatScalar(row[column], column)}
+                          </div>
+                        )}
+                      </td>
+                    ))}
+                  </tr>
+                );
+              }) : (
+                <tr>
+                  <td colSpan={columns.length} className="px-4 py-16 text-center text-slate-500">
+                    <div className="text-lg font-black text-white">No passengers found</div>
+                    <p className="mt-2 text-sm">Try a different name, ticket, cabin, or passenger ID.</p>
+                  </td>
                 </tr>
-              ))}
+              )}
             </tbody>
           </table>
         </div>
 
-        {/* Empty State */}
-        {filteredData.length === 0 && searchTerm && (
-          <div className="text-center py-12 animate-fade-in">
-            <div className="text-gray-400 mb-4">
-              <svg className="w-16 h-16 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-            </div>
-            <h3 className="text-lg font-medium text-gray-900 mb-2">No matching records</h3>
-            <p className="text-gray-600 mb-4">Try adjusting your search criteria</p>
+        <div className="space-y-3 p-4 lg:hidden">
+          {data.length > 0 ? data.map((row) => (
             <button
-              onClick={() => setSearchTerm('')}
-              className="px-6 py-2 bg-gradient-to-r from-blue-500 to-purple-600 text-white rounded-xl hover:shadow-lg transition-all duration-300 transform hover:scale-105"
+              key={row.PassengerId || row.Name}
+              type="button"
+              onClick={() => setSelectedRow(row)}
+              className="w-full rounded-2xl border border-white/10 bg-white/[0.045] p-4 text-left transition hover:bg-white/[0.08]"
             >
-              Clear Search
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="truncate text-base font-black text-white">{formatScalar(row.Name, 'Name')}</div>
+                  <div className="mt-1 text-xs font-semibold text-slate-500">ID {row.PassengerId} • Class {row.Pclass} • {formatScalar(row.Age, 'Age')}</div>
+                </div>
+                <OutcomePill value={row.Survived} />
+              </div>
             </button>
-          </div>
-        )}
-      </div>
+          )) : (
+            <div className="rounded-2xl border border-white/10 bg-white/[0.045] p-6 text-center text-slate-500">No passengers found.</div>
+          )}
+        </div>
 
-      {/* Pagination */}
-      {Math.ceil(totalRecords / itemsPerPage) > 1 && (
-        <div className="flex flex-col lg:flex-row justify-between items-center gap-4 bg-white p-6 rounded-2xl shadow-lg border border-gray-200 animate-slide-up">
-          <div className="text-sm text-gray-600">
-            Showing {((currentPage - 1) * itemsPerPage) + 1}-{Math.min(currentPage * itemsPerPage, totalRecords)} of {totalRecords} passengers
+        <div className="flex flex-col gap-4 border-t border-white/10 p-5 sm:flex-row sm:items-center sm:justify-between">
+          <div className="text-xs font-semibold text-slate-500">
+            Showing <span className="text-slate-200">{startRecord}</span>–<span className="text-slate-200">{endRecord}</span> of <span className="text-slate-200">{totalRecords.toLocaleString('en-US')}</span>
           </div>
-          
-          <div className="flex items-center space-x-2">
+          <div className="flex flex-wrap items-center gap-2">
             <button
-              onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
-              disabled={currentPage === 1}
-              className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-xl hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 transform hover:scale-105"
+              type="button"
+              onClick={() => handlePageChange(currentPage - 1)}
+              disabled={currentPage <= 1}
+              className="rounded-xl border border-white/10 bg-white/[0.045] px-3 py-2 text-xs font-black text-slate-300 transition hover:bg-white/[0.09] disabled:cursor-not-allowed disabled:opacity-40"
             >
               Previous
             </button>
-            
-            {/* Page Numbers */}
-            <div className="flex space-x-1">
-              {[...Array(Math.ceil(totalRecords / itemsPerPage))].map((_, index) => {
-                const page = index + 1;
-                if (
-                  page === 1 ||
-                  page === Math.ceil(totalRecords / itemsPerPage) ||
-                  (page >= currentPage - 1 && page <= currentPage + 1)
-                ) {
-                  return (
-                    <button
-                      key={page}
-                      onClick={() => setCurrentPage(page)}
-                      className={`px-4 py-2 text-sm font-medium rounded-xl transition-all duration-300 transform hover:scale-110 ${
-                        currentPage === page
-                          ? 'bg-gradient-to-r from-blue-500 to-purple-600 text-white shadow-lg'
-                          : 'text-gray-700 bg-white border border-gray-300 hover:bg-gray-50'
-                      }`}
-                    >
-                      {page}
-                    </button>
-                  );
-                } else if (page === currentPage - 2 || page === currentPage + 2) {
-                  return <span key={page} className="px-2 py-2 text-gray-500">...</span>;
-                }
-                return null;
-              })}
-            </div>
-            
+
+            {pageNumbers.map((page) => (
+              typeof page === 'number' ? (
+                <button
+                  key={page}
+                  type="button"
+                  onClick={() => handlePageChange(page)}
+                  className={`h-9 min-w-9 rounded-xl px-3 text-xs font-black transition ${page === currentPage ? 'bg-white text-slate-950' : 'border border-white/10 bg-white/[0.045] text-slate-300 hover:bg-white/[0.09]'}`}
+                >
+                  {page}
+                </button>
+              ) : (
+                <span key={page} className="px-1 text-slate-600">…</span>
+              )
+            ))}
+
             <button
-              onClick={() => setCurrentPage(prev => Math.min(prev + 1, Math.ceil(totalRecords / itemsPerPage)))}
-              disabled={currentPage === Math.ceil(totalRecords / itemsPerPage)}
-              className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-xl hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 transform hover:scale-105"
+              type="button"
+              onClick={() => handlePageChange(currentPage + 1)}
+              disabled={currentPage >= totalPages}
+              className="rounded-xl border border-white/10 bg-white/[0.045] px-3 py-2 text-xs font-black text-slate-300 transition hover:bg-white/[0.09] disabled:cursor-not-allowed disabled:opacity-40"
             >
               Next
             </button>
           </div>
         </div>
-      )}
+      </div>
 
-      {/* Selected Row Detail */}
-      {selectedRow && (
-        <div className="bg-gradient-to-r from-blue-50 to-purple-50 rounded-2xl p-6 border border-blue-200 animate-fade-in">
-          <div className="flex justify-between items-start mb-4">
-            <h3 className="text-xl font-bold text-gray-900">Passenger Details</h3>
-            <button
-              onClick={() => setSelectedRow(null)}
-              className="text-gray-500 hover:text-gray-700 transition-colors duration-200"
-            >
-              ✕
-            </button>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {Object.entries(selectedRow).map(([key, value]) => (
-              <div key={key} className="bg-white rounded-lg p-4 shadow-sm transition-transform duration-300 hover:scale-105">
-                <div className="text-sm font-medium text-gray-600 capitalize">{key}</div>
-                <div className="text-lg font-bold text-gray-900 mt-1">
-                  {formatValue(value, key)}
-                </div>
+      <aside className={`${isTateOpen ? 'hidden' : 'hidden xl:block'} p-5`}>
+        <div className="sticky top-28 rounded-[1.75rem] border border-white/10 bg-white/[0.045] p-5">
+          <p className="kicker text-emerald-200">Selected Passenger</p>
+          {selectedPassenger ? (
+            <div className="mt-5">
+              <h3 className="break-words text-2xl font-black tracking-[-0.05em] text-white">{formatScalar(selectedPassenger.Name, 'Name')}</h3>
+              <div className="mt-3"><OutcomePill value={selectedPassenger.Survived} /></div>
+              <div className="mt-5 grid grid-cols-2 gap-3 text-sm">
+                {['PassengerId', 'Sex', 'Age', 'Pclass', 'Fare', 'Embarked', 'Ticket', 'Cabin'].map((key) => (
+                  <div key={key} className="rounded-2xl border border-white/10 bg-slate-950/45 p-3">
+                    <div className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-600">{columnLabels[key] || key}</div>
+                    <div className="mt-1 truncate font-black text-slate-200" title={formatScalar(selectedPassenger[key], key)}>{formatScalar(selectedPassenger[key], key)}</div>
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
+            </div>
+          ) : (
+            <p className="mt-4 text-sm leading-relaxed text-slate-500">Select a row to inspect passenger details.</p>
+          )}
         </div>
-      )}
+      </aside>
     </div>
   );
 };

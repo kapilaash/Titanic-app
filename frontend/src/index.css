@@ -3,13 +3,42 @@
 @tailwind utilities;
 
 @layer base {
+  :root {
+    --app-bg: #020617;
+    --app-panel: rgba(15, 23, 42, 0.72);
+    --app-border: rgba(255, 255, 255, 0.1);
+    --app-text: #e5edf8;
+    --app-muted: #94a3b8;
+    --tate-glow: 1;
+    --tate-speed: 5.8s;
+    --tate-border-width: 2px;
+  }
+
   html {
     -webkit-text-size-adjust: 100%;
     text-size-adjust: 100%;
+    scroll-behavior: smooth;
   }
-  
+
   body {
     @apply antialiased;
+    margin: 0;
+    min-height: 100vh;
+    background: var(--app-bg);
+    color: var(--app-text);
+    font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  }
+
+  button,
+  input,
+  textarea,
+  select {
+    font: inherit;
+  }
+
+  ::selection {
+    background: rgba(34, 211, 238, 0.32);
+    color: white;
   }
 }
 
@@ -17,23 +46,88 @@
   .container {
     @apply max-w-7xl mx-auto;
   }
-  
-  /* Fix for gradient text clipping */
+
+  .app-shell {
+    position: relative;
+    overflow-x: hidden;
+    background:
+      radial-gradient(circle at 12% 8%, rgba(34, 211, 238, 0.14), transparent 28rem),
+      radial-gradient(circle at 82% 14%, rgba(168, 85, 247, 0.16), transparent 30rem),
+      linear-gradient(135deg, #020617 0%, #07111f 42%, #020617 100%);
+  }
+
+  .app-aurora {
+    pointer-events: none;
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    opacity: 0.95;
+    background:
+      radial-gradient(circle at 17% 19%, rgba(34, 211, 238, 0.16), transparent 22rem),
+      radial-gradient(circle at 84% 12%, rgba(124, 58, 237, 0.18), transparent 25rem),
+      radial-gradient(circle at 64% 92%, rgba(14, 165, 233, 0.10), transparent 22rem);
+    filter: saturate(1.25);
+  }
+
+  .app-grid {
+    pointer-events: none;
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    background-image:
+      linear-gradient(rgba(255,255,255,0.035) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255,255,255,0.035) 1px, transparent 1px);
+    background-size: 72px 72px;
+    mask-image: radial-gradient(circle at 50% 0%, black, transparent 72%);
+  }
+
+  .premium-card {
+    position: relative;
+    overflow: hidden;
+    border: 1px solid var(--app-border);
+    border-radius: 2rem;
+    background:
+      linear-gradient(145deg, rgba(15, 23, 42, 0.92), rgba(2, 6, 23, 0.86)),
+      radial-gradient(circle at top left, rgba(34, 211, 238, 0.12), transparent 26rem);
+    box-shadow:
+      0 32px 90px rgba(0, 0, 0, 0.42),
+      inset 0 1px 0 rgba(255, 255, 255, 0.07);
+    backdrop-filter: blur(22px);
+  }
+
+  .glass-panel {
+    border: 1px solid rgba(255, 255, 255, 0.10);
+    background: rgba(255, 255, 255, 0.055);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.08),
+      0 20px 55px rgba(2, 6, 23, 0.26);
+    backdrop-filter: blur(18px);
+  }
+
+  .kicker {
+    @apply text-[10px] font-black uppercase tracking-[0.32em];
+  }
+
+  .aurora-text {
+    background: linear-gradient(90deg, #f8fafc 0%, #a5f3fc 45%, #c4b5fd 78%, #f8fafc 100%);
+    background-clip: text;
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+
   .gradient-text {
     background-clip: text;
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     display: inline-block;
   }
-  
-  /* Better mobile tap targets */
+
   .touch-target {
     @apply min-h-[44px] min-w-[44px];
   }
 }
 
 @layer utilities {
-  /* Animations */
   @keyframes fade-in {
     from {
       opacity: 0;
@@ -44,47 +138,248 @@
       transform: translateY(0);
     }
   }
-  
+
   @keyframes slide-up {
     from {
       opacity: 0;
-      transform: translateY(20px);
+      transform: translateY(22px);
     }
     to {
       opacity: 1;
       transform: translateY(0);
     }
   }
-  
-  .animate-fade-in {
-    animation: fade-in 0.5s ease-out;
+
+  @keyframes float-soft {
+    0%, 100% {
+      transform: translate3d(0, 0, 0);
+    }
+    50% {
+      transform: translate3d(0, -8px, 0);
+    }
   }
-  
+
+  @keyframes shimmer-line {
+    0% {
+      transform: translateX(-100%);
+    }
+    100% {
+      transform: translateX(100%);
+    }
+  }
+
+  .animate-fade-in {
+    animation: fade-in 0.48s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
   .animate-slide-up {
-    animation: slide-up 0.5s ease-out;
+    animation: slide-up 0.52s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  .animate-float-soft {
+    animation: float-soft 5.4s ease-in-out infinite;
   }
 }
 
-/* Fix for mobile viewport */
-@media (max-width: 640px) {
-  .mobile-scroll {
-    -webkit-overflow-scrolling: touch;
-    overflow-x: auto;
+@property --tate-angle {
+  syntax: "<angle>";
+  initial-value: 180deg;
+  inherits: false;
+}
+
+.tate-copilot-button {
+  position: fixed;
+  isolation: isolate;
+  overflow: visible;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background:
+    radial-gradient(circle at 22% 18%, rgba(34, 211, 238, 0.32), transparent 34%),
+    radial-gradient(circle at 86% 78%, rgba(168, 85, 247, 0.30), transparent 38%),
+    linear-gradient(135deg, #030712 0%, #07111f 44%, #111827 100%);
+  box-shadow:
+    0 26px 65px rgba(2, 6, 23, 0.54),
+    0 0 calc(26px * var(--tate-glow)) rgba(34, 211, 238, 0.32),
+    inset 0 1px 0 rgba(255, 255, 255, 0.16);
+  transform: translateZ(0);
+  transition:
+    transform 260ms ease,
+    box-shadow 260ms ease,
+    background 260ms ease;
+}
+
+.tate-copilot-button:hover {
+  transform: translateY(-3px) scale(1.015) translateZ(0);
+  box-shadow:
+    0 34px 80px rgba(2, 6, 23, 0.58),
+    0 0 calc(36px * var(--tate-glow)) rgba(34, 211, 238, 0.45),
+    inset 0 1px 0 rgba(255, 255, 255, 0.2);
+}
+
+.tate-copilot-button::before {
+  content: "";
+  position: absolute;
+  inset: -2px;
+  z-index: -2;
+  border-radius: inherit;
+  padding: var(--tate-border-width);
+  background:
+    conic-gradient(
+      from var(--tate-angle),
+      transparent 0deg,
+      rgba(34, 211, 238, 0.08) 80deg,
+      #22d3ee 135deg,
+      #60a5fa 205deg,
+      #a78bfa 270deg,
+      #f0abfc 320deg,
+      transparent 360deg
+    );
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  mask-composite: exclude;
+  animation: tate-magic-border var(--tate-speed) linear infinite;
+  filter:
+    drop-shadow(0 0 calc(8px * var(--tate-glow)) rgba(34, 211, 238, 0.85))
+    drop-shadow(0 0 calc(14px * var(--tate-glow)) rgba(168, 85, 247, 0.45));
+}
+
+.tate-copilot-button::after {
+  content: "";
+  position: absolute;
+  inset: -14px;
+  z-index: -3;
+  border-radius: inherit;
+  background: radial-gradient(circle, rgba(34, 211, 238, 0.22), transparent 62%);
+  opacity: 0.58;
+  animation: tate-pulse 2.8s ease-in-out infinite;
+}
+
+.tate-magic-orbit {
+  position: absolute;
+  inset: -7px;
+  border-radius: inherit;
+  border: 1px solid rgba(34, 211, 238, 0.12);
+  animation: tate-orbit 3.8s ease-in-out infinite;
+}
+
+.tate-magic-sparkle {
+  position: absolute;
+  z-index: 2;
+  color: #a5f3fc;
+  text-shadow: 0 0 14px rgba(34, 211, 238, 0.9);
+  pointer-events: none;
+  animation: tate-spark 2.6s ease-in-out infinite;
+}
+
+.tate-sparkle-one {
+  left: 14px;
+  top: -7px;
+  animation-delay: 0s;
+}
+
+.tate-sparkle-two {
+  right: 18px;
+  top: -10px;
+  animation-delay: 0.7s;
+}
+
+.tate-sparkle-three {
+  bottom: -9px;
+  right: 38%;
+  animation-delay: 1.3s;
+}
+
+@keyframes tate-magic-border {
+  to {
+    --tate-angle: 540deg;
   }
-  
-  /* Prevent text size adjustment on orientation change */
+}
+
+@keyframes tate-pulse {
+  0%, 100% {
+    opacity: 0.36;
+    transform: scale(0.98);
+  }
+  50% {
+    opacity: 0.72;
+    transform: scale(1.04);
+  }
+}
+
+@keyframes tate-orbit {
+  0%, 100% {
+    transform: rotate(0deg) scale(1);
+    opacity: 0.38;
+  }
+  50% {
+    transform: rotate(8deg) scale(1.04);
+    opacity: 0.88;
+  }
+}
+
+@keyframes tate-spark {
+  0%, 100% {
+    opacity: 0.25;
+    transform: translateY(2px) scale(0.85) rotate(0deg);
+  }
+  50% {
+    opacity: 1;
+    transform: translateY(-3px) scale(1.15) rotate(12deg);
+  }
+}
+
+.mobile-scroll {
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(148, 163, 184, 0.35) transparent;
+}
+
+.mobile-scroll::-webkit-scrollbar {
+  height: 6px;
+  width: 6px;
+}
+
+.mobile-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.mobile-scroll::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.32);
+  border-radius: 999px;
+}
+
+@media (max-width: 640px) {
   html {
     -webkit-text-size-adjust: none;
     text-size-adjust: none;
   }
+
+  .premium-card {
+    border-radius: 1.5rem;
+  }
 }
-/* In your global CSS */
-@media (max-height: 600px) {
-  .intro-modal {
-    max-height: 90vh !important;
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
   }
-  .intro-modal-content {
-    padding-top: 0.5rem !important;
-    padding-bottom: 0.5rem !important;
-  }
+}
+
+/* Layout coordination: when Tate is open, data-heavy workspaces can reserve space
+   so the assistant no longer covers selected-passenger panels or important rows. */
+html.tate-panel-open .tate-copilot-button {
+  pointer-events: none;
+}
+
+html.tate-panel-open {
+  scroll-padding-bottom: 7rem;
 }
