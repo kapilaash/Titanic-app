@@ -68,13 +68,19 @@ const MissionGuideModal = ({ activeView, onNavigate }) => {
   const handleNextTask = () => {
     if (!isTaskComplete) return;
 
+    const taskToOpen = getNextExplorationTask(getExplorationProgress());
+
+    // If every mission is complete, keep the positive completion state but collapse
+    // the guide into the small resume chip instead of leaving a disabled button visible.
+    if (!taskToOpen) {
+      minimizeMissionGuide(activeTask.id);
+      return;
+    }
+
     // Internal lifecycle action only: the completed guide is closed so the next guide can open.
     // There is intentionally no visible Dismiss button because users should not confuse
     // dismissal with the recommended Continue here flow.
     dismissMissionGuide(activeTask.id);
-
-    const taskToOpen = getNextExplorationTask(getExplorationProgress());
-    if (!taskToOpen) return;
 
     requestMissionGuide(taskToOpen.id);
     goToTaskSection(taskToOpen);
@@ -189,8 +195,13 @@ const MissionGuideModal = ({ activeView, onNavigate }) => {
               <button
                 type="button"
                 onClick={handleNextTask}
-                disabled={!isTaskComplete || !nextTask}
-                className="rounded-2xl border border-white/10 bg-white/[0.06] px-5 py-3 text-sm font-black text-white transition hover:-translate-y-0.5 hover:bg-white/[0.1] disabled:cursor-not-allowed disabled:opacity-45"
+                disabled={!isTaskComplete}
+                className={`rounded-2xl px-5 py-3 text-sm font-black transition focus:outline-none focus:ring-2 focus:ring-cyan-300/50 disabled:cursor-not-allowed disabled:opacity-45 ${
+                  nextTask
+                    ? 'border border-white/10 bg-white/[0.06] text-white hover:-translate-y-0.5 hover:bg-white/[0.1]'
+                    : 'border border-emerald-200/20 bg-emerald-300/12 text-emerald-100 hover:-translate-y-0.5 hover:bg-emerald-300/18'
+                }`}
+                aria-label={nextTask ? 'Open the next mission' : 'Collapse completed mission guide'}
               >
                 {nextTask ? 'Next mission →' : 'All missions complete'}
               </button>
