@@ -2,23 +2,63 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   EXPLORATION_GUIDE_EVENT,
-  dismissMissionGuide,
   getExplorationGuideState,
   getExplorationProgress,
   getNextExplorationTask,
   getTaskById,
+  markExplorationTask,
   minimizeMissionGuide,
   reopenMissionGuide,
   requestMissionGuide,
 } from '../utils/explorationProgress';
 
 const sectionLabelMap = {
-  dashboard: 'Command',
+  dashboard: 'Dashboard',
   analysis: 'Analysis',
-  regression: 'ML Lab',
-  data: 'Explorer',
+  regression: 'ML Insights',
+  data: 'Data Explorer',
   copilot: 'Tate AI',
   engineering: 'Build Story',
+};
+
+
+const MissionChip = ({
+  task,
+  title = 'Start guided mission',
+  subtitle,
+  onClick,
+  tone = 'cyan',
+}) => {
+  const toneMap = {
+    cyan: 'border-cyan-200/30 hover:shadow-cyan-950/40',
+    emerald: 'border-emerald-200/30 hover:shadow-emerald-950/40',
+  };
+
+  if (!task) return null;
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`fixed bottom-24 left-4 z-[65] max-w-[calc(100vw-2rem)] rounded-2xl border bg-slate-950 px-4 py-3 text-left text-white shadow-2xl shadow-slate-950/30 transition-all hover:-translate-y-0.5 ${toneMap[tone] || toneMap.cyan}`}
+      aria-label={title}
+    >
+      <div className="flex items-center gap-3">
+        <span className="text-2xl">{task.icon}</span>
+        <div>
+          <div className="text-[10px] font-black uppercase tracking-[0.2em] text-cyan-200">
+            {title}
+          </div>
+          <div className="text-sm font-black text-white">{task.title}</div>
+          {subtitle && (
+            <div className="mt-0.5 max-w-[18rem] text-xs font-semibold text-slate-400">
+              {subtitle}
+            </div>
+          )}
+        </div>
+      </div>
+    </button>
+  );
 };
 
 const MissionGuideModal = ({ activeView, onNavigate }) => {
@@ -41,28 +81,52 @@ const MissionGuideModal = ({ activeView, onNavigate }) => {
   const activeTask = useMemo(() => getTaskById(guideState.pendingTaskId), [guideState.pendingTaskId]);
   const nextTask = useMemo(() => getNextExplorationTask(progress), [progress]);
 
-  if (!activeTask) return null;
+  /*
+    If the user has not opened a mission yet, keep the guided journey visible as a
+    small minimized chip. This prevents the journey from being hidden behind a
+    manual "find and click a mission first" workflow.
+  */
+  if (!activeTask && nextTask) {
+    return (
+      <MissionChip
+        task={nextTask}
+        title="Start guided mission"
+        subtitle="Begin the interactive product walkthrough."
+        onClick={() => requestMissionGuide(nextTask.id)}
+      />
+    );
+  }
+
+  if (!activeTask && !nextTask) {
+    return null;
+  }
+
 
   const isMinimized = Boolean(guideState.minimized?.[activeTask.id]);
-  const isDismissed = Boolean(guideState.dismissed?.[activeTask.id]);
   const isTaskComplete = Boolean(progress[activeTask.id]);
   const isCorrectSection = activeTask.section === 'copilot' || activeTask.section === activeView;
+  const requiresManualConfirmation = activeTask.completionMode === 'manual';
 
-  if (isDismissed) return null;
-
-  const goToTaskSection = (task = activeTask) => {
-    if (task.section === 'copilot') {
+  const handleGoToTaskSection = () => {
+    if (activeTask.section === 'copilot') {
       window.dispatchEvent(new CustomEvent('titanic-open-copilot'));
       return;
     }
 
-    if (task.section && onNavigate) {
-      onNavigate(task.section);
+    if (activeTask.section && onNavigate) {
+      onNavigate(activeTask.section);
     }
   };
 
-  const handleContinueHere = () => {
-    minimizeMissionGuide(activeTask.id);
+  const handleManualCompletion = () => {
+    if (!isCorrectSection || !requiresManualConfirmation || isTaskComplete) return;
+
+    markExplorationTask(activeTask.id, {
+      source: 'mission_interaction',
+      metadata: {
+        confirmedFromSection: activeView,
+      },
+    });
   };
 
   const handleNextTask = () => {
@@ -70,141 +134,212 @@ const MissionGuideModal = ({ activeView, onNavigate }) => {
 
     const taskToOpen = getNextExplorationTask(getExplorationProgress());
 
-    // If every mission is complete, keep the positive completion state but collapse
-    // the guide into the small resume chip instead of leaving a disabled button visible.
     if (!taskToOpen) {
       minimizeMissionGuide(activeTask.id);
       return;
     }
 
-    // Internal lifecycle action only: the completed guide is closed so the next guide can open.
-    // There is intentionally no visible Dismiss button because users should not confuse
-    // dismissal with the recommended Continue here flow.
-    dismissMissionGuide(activeTask.id);
-
     requestMissionGuide(taskToOpen.id);
-    goToTaskSection(taskToOpen);
+
+    if (taskToOpen.section === 'copilot') {
+      window.dispatchEvent(new CustomEvent('titanic-open-copilot'));
+      return;
+    }
+
+    if (taskToOpen.section && onNavigate) {
+      onNavigate(taskToOpen.section);
+    }
   };
+
+  const getPrimaryButton = () => {
+    if (!isCorrectSection) {
+      return {
+        label: `Go to ${sectionLabelMap[activeTask.section] || activeTask.section}`,
+        onClick: handleGoToTaskSection,
+        disabled: false,
+        className: 'bg-slate-950 text-white hover:bg-slate-800',
+      };
+    }
+
+    if (!isTaskComplete && requiresManualConfirmation) {
+      return {
+        label: activeTask.completionLabel || 'Confirm mission interaction',
+        onClick: handleManualCompletion,
+        disabled: false,
+        className: 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white hover:shadow-xl',
+      };
+    }
+
+    if (!isTaskComplete && activeTask.section === 'copilot') {
+      return {
+        label: activeTask.id === 'aiQuestionAsked' ? 'Open Tate and ask a question' : 'Open Tate',
+        onClick: () => window.dispatchEvent(new CustomEvent('titanic-open-copilot')),
+        disabled: false,
+        className: 'bg-gradient-to-r from-violet-600 to-fuchsia-600 text-white hover:shadow-xl',
+      };
+    }
+
+    if (!isTaskComplete) {
+      return {
+        label: 'Waiting for required interaction',
+        onClick: () => {},
+        disabled: true,
+        className: 'cursor-not-allowed bg-slate-200 text-slate-500 shadow-none',
+      };
+    }
+
+    if (nextTask && nextTask.id !== activeTask.id) {
+      return {
+        label: `Next mission: ${nextTask.title}`,
+        onClick: handleNextTask,
+        disabled: false,
+        className: 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white hover:shadow-xl',
+      };
+    }
+
+    return {
+      label: 'All missions complete',
+      onClick: () => minimizeMissionGuide(activeTask.id),
+      disabled: false,
+      className: 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white hover:shadow-xl',
+    };
+  };
+
+  const primaryButton = getPrimaryButton();
 
   if (isMinimized) {
     return (
-      <button
-        type="button"
+      <MissionChip
+        task={activeTask}
+        title={isTaskComplete ? 'Mission checkpoint' : 'Resume mission'}
+        subtitle={isTaskComplete ? 'Open to continue the guided journey.' : 'Return to the active interaction.'}
+        tone={isTaskComplete ? 'emerald' : 'cyan'}
         onClick={() => reopenMissionGuide(activeTask.id)}
-        className="fixed bottom-4 left-4 z-[45] max-w-[13rem] rounded-2xl border border-cyan-200/15 bg-slate-950/75 px-3 py-2 text-left text-white shadow-2xl backdrop-blur-xl transition-all hover:-translate-y-0.5 hover:bg-slate-900/95 focus:outline-none focus:ring-2 focus:ring-cyan-300/40"
-        aria-label={`Reopen mission guide for ${activeTask.title}`}
-      >
-        <div className="flex items-center gap-2">
-          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/[0.06] text-cyan-100">
-            {activeTask.icon}
-          </span>
-          <div className="min-w-0">
-            <div className="text-[9px] font-black uppercase tracking-[0.18em] text-cyan-200">Guide minimized</div>
-            <div className="truncate text-xs font-black text-white">Resume mission</div>
-          </div>
-        </div>
-      </button>
+      />
     );
   }
 
   return (
     <div className="fixed inset-0 z-[64] pointer-events-none">
-      <div className="absolute inset-0 bg-slate-950/45 backdrop-blur-[2px]" />
+      <div className="absolute inset-0 bg-slate-950/30 backdrop-blur-[2px]" />
 
       <div className="absolute bottom-5 left-1/2 w-[min(94vw,44rem)] -translate-x-1/2 pointer-events-auto">
-        <div className="premium-card overflow-hidden">
-          <div className="relative border-b border-white/10 p-5 text-white">
-            <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-cyan-300/70 to-transparent" />
-
-            <div className="flex items-start gap-4">
-              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-cyan-200/20 bg-cyan-300/10 text-lg font-black text-cyan-100">
-                {isTaskComplete ? '✓' : activeTask.icon}
+        <div className="overflow-hidden rounded-3xl border border-white/70 bg-white shadow-[0_28px_90px_rgba(15,23,42,0.35)]">
+          <div className="relative bg-gradient-to-r from-slate-950 via-blue-950 to-indigo-950 p-5 text-white">
+            <div className="absolute inset-0 opacity-50 bg-[radial-gradient(circle_at_top_left,rgba(59,130,246,0.5),transparent_35%),radial-gradient(circle_at_bottom_right,rgba(168,85,247,0.42),transparent_40%)]" />
+            <div className="relative flex items-start justify-between gap-4">
+              <div className="flex items-start gap-4">
+                <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl border border-white/15 bg-white/10 text-3xl">
+                  {activeTask.icon}
+                </div>
+                <div>
+                  <div className="text-xs font-black uppercase tracking-[0.18em] text-blue-100">
+                    Interactive guided mission
+                  </div>
+                  <h3 className="mt-1 text-xl font-black tracking-tight">{activeTask.guideTitle || activeTask.title}</h3>
+                  <p className="mt-2 text-sm leading-relaxed text-blue-50">
+                    {isCorrectSection
+                      ? `You are in ${sectionLabelMap[activeTask.section] || activeTask.section}. Complete the required interaction below.`
+                      : `Navigate to ${sectionLabelMap[activeTask.section] || activeTask.section}. This mission will not auto-complete from navigation alone.`}
+                  </p>
+                </div>
               </div>
 
-              <div className="min-w-0 flex-1">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="kicker text-cyan-200">Mission Guide</span>
-                  <span className="rounded-full border border-white/10 bg-white/[0.055] px-2 py-1 text-[9px] font-black uppercase tracking-[0.14em] text-slate-400">
-                    {sectionLabelMap[activeTask.section] || activeTask.section}
-                  </span>
+              <button
+                type="button"
+                onClick={() => minimizeMissionGuide(activeTask.id)}
+                className="rounded-xl bg-white/10 px-3 py-2 text-xs font-bold text-white hover:bg-white/20"
+              >
+                Continue here
+              </button>
+            </div>
+          </div>
+
+          <div className="grid gap-4 p-5 md:grid-cols-[1.1fr_0.9fr]">
+            <div>
+              <p className="text-sm leading-relaxed text-slate-600">{activeTask.guideSummary}</p>
+
+              <div className="mt-4 rounded-2xl border border-blue-100 bg-blue-50/70 p-4">
+                <div className="text-xs font-black uppercase tracking-wide text-blue-700">What to do now</div>
+                <ol className="mt-3 space-y-2">
+                  {(activeTask.guideSteps || []).map((step, index) => (
+                    <li key={`${activeTask.id}-${step}`} className="flex gap-3 text-sm text-slate-700">
+                      <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-blue-600 text-xs font-black text-white">
+                        {index + 1}
+                      </span>
+                      <span>{step}</span>
+                    </li>
+                  ))}
+                </ol>
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              <div
+                className={`rounded-2xl border p-4 ${
+                  isTaskComplete
+                    ? 'border-emerald-100 bg-emerald-50'
+                    : isCorrectSection
+                      ? 'border-blue-100 bg-blue-50'
+                      : 'border-amber-100 bg-amber-50'
+                }`}
+              >
+                <div
+                  className={`text-xs font-black uppercase tracking-wide ${
+                    isTaskComplete
+                      ? 'text-emerald-700'
+                      : isCorrectSection
+                        ? 'text-blue-700'
+                        : 'text-amber-700'
+                  }`}
+                >
+                  {isTaskComplete
+                    ? 'Mission completed'
+                    : requiresManualConfirmation
+                      ? 'Interaction confirmation required'
+                      : 'User action required'}
                 </div>
-
-                <h3 className="mt-2 text-2xl font-black tracking-[-0.05em] text-white">
-                  {activeTask.guideTitle}
-                </h3>
-
-                <p className="mt-2 text-sm leading-relaxed text-slate-400">
-                  {activeTask.guideSummary}
+                <p className="mt-2 text-sm leading-relaxed text-slate-700">
+                  {isTaskComplete
+                    ? 'This mission is complete. You can continue to the next recommendation.'
+                    : activeTask.completionHint || activeTask.guideSuccess}
                 </p>
+              </div>
+
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                <div className="text-xs font-black uppercase tracking-wide text-slate-500">Current location</div>
+                <div className="mt-2 text-sm font-black text-slate-950">{sectionLabelMap[activeView] || activeView}</div>
+                <div className="mt-3 rounded-xl bg-white px-3 py-2 text-xs font-semibold text-slate-500">
+                  Navigation alone will not complete this mission.
+                </div>
               </div>
             </div>
           </div>
 
-          <div className="p-5">
-            <div className="grid gap-3 md:grid-cols-3">
-              {activeTask.guideSteps.map((step, index) => (
-                <div key={step} className="rounded-2xl border border-white/10 bg-white/[0.045] p-4">
-                  <div className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">
-                    Step {index + 1}
-                  </div>
-                  <p className="mt-2 text-sm leading-relaxed text-slate-300">{step}</p>
-                </div>
-              ))}
-            </div>
-
-            <div
-              className={`mt-4 rounded-2xl border p-4 ${
-                isTaskComplete
-                  ? 'border-emerald-200/20 bg-emerald-300/10'
-                  : 'border-amber-200/20 bg-amber-300/10'
-              }`}
+          <div className="flex flex-col gap-3 border-t border-slate-200 bg-slate-50 p-5 sm:flex-row sm:items-center sm:justify-between">
+            <button
+              type="button"
+              onClick={() => minimizeMissionGuide(activeTask.id)}
+              className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-100"
             >
-              <div className={`text-sm font-black ${isTaskComplete ? 'text-emerald-100' : 'text-amber-100'}`}>
-                {isTaskComplete ? 'Mission completed' : isCorrectSection ? 'You are in the right section' : 'Navigation required'}
-              </div>
-              <p className="mt-1 text-xs leading-relaxed text-slate-400">
-                {isTaskComplete
-                  ? activeTask.guideSuccess
-                  : isCorrectSection
-                    ? 'Use Continue here to collapse this guide while you complete the mission in the current workspace.'
-                    : activeTask.guideSuccess}
-              </p>
-            </div>
+              Continue here
+            </button>
 
-            <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:justify-end">
-              {!isCorrectSection && (
-                <button
-                  type="button"
-                  onClick={() => goToTaskSection(activeTask)}
-                  className="rounded-2xl bg-white px-5 py-3 text-sm font-black text-slate-950 transition hover:-translate-y-0.5 hover:bg-cyan-50 focus:outline-none focus:ring-2 focus:ring-cyan-300/50"
-                >
-                  {activeTask.actionLabel}
-                </button>
-              )}
-
-              {isCorrectSection && !isTaskComplete && (
-                <button
-                  type="button"
-                  onClick={handleContinueHere}
-                  className="rounded-2xl bg-white px-5 py-3 text-sm font-black text-slate-950 shadow-lg shadow-cyan-950/20 transition hover:-translate-y-0.5 hover:bg-cyan-50 focus:outline-none focus:ring-2 focus:ring-cyan-300/50"
-                >
-                  Continue here
-                </button>
-              )}
-
+            <div className="flex flex-col items-stretch gap-2 sm:items-end">
               <button
                 type="button"
-                onClick={handleNextTask}
-                disabled={!isTaskComplete}
-                className={`rounded-2xl px-5 py-3 text-sm font-black transition focus:outline-none focus:ring-2 focus:ring-cyan-300/50 disabled:cursor-not-allowed disabled:opacity-45 ${
-                  nextTask
-                    ? 'border border-white/10 bg-white/[0.06] text-white hover:-translate-y-0.5 hover:bg-white/[0.1]'
-                    : 'border border-emerald-200/20 bg-emerald-300/12 text-emerald-100 hover:-translate-y-0.5 hover:bg-emerald-300/18'
-                }`}
-                aria-label={nextTask ? 'Open the next mission' : 'Collapse completed mission guide'}
+                onClick={primaryButton.onClick}
+                disabled={primaryButton.disabled}
+                className={`rounded-xl px-4 py-2.5 text-sm font-bold shadow-lg transition-all ${primaryButton.className}`}
               >
-                {nextTask ? 'Next mission →' : 'All missions complete'}
+                {primaryButton.label}
               </button>
+
+              {!isTaskComplete && (
+                <div className="max-w-xs text-xs font-semibold text-slate-500 sm:text-right">
+                  Complete the required interaction to unlock the next mission.
+                </div>
+              )}
             </div>
           </div>
         </div>

@@ -2,6 +2,7 @@
 import React, { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import api from '../api/client';
+import { MetricSkeletonValue, LoadingText } from './common/DataState';
 import {
   getExplorationProgress,
   getNextExplorationTask,
@@ -11,17 +12,23 @@ import {
 } from '../utils/explorationProgress';
 
 const safeNumber = (value, fallback = null) => {
+  if (value === null || value === undefined || value === '') {
+    return fallback;
+  }
+
   const numeric = Number(value);
   return Number.isFinite(numeric) ? numeric : fallback;
 };
 
+const hasMeaningfulNumber = (value) => safeNumber(value, null) !== null;
+
 const formatInteger = (value) => {
-  const numeric = safeNumber(value);
+  const numeric = safeNumber(value, null);
   return numeric === null ? '—' : new Intl.NumberFormat('en-US').format(numeric);
 };
 
 const formatPercent = (value) => {
-  const numeric = safeNumber(value);
+  const numeric = safeNumber(value, null);
   return numeric === null ? '—' : `${numeric.toFixed(1)}%`;
 };
 
@@ -32,7 +39,17 @@ const fetchSurvivalRates = async () => (await api.get('/survival_rates')).data;
 const fetchModelInsights = async () => (await api.get('/regression/survival')).data;
 const fetchTateHealth = async () => (await api.get('/copilot/health')).data;
 
-const MetricBlock = ({ label, value, helper, tone = 'cyan' }) => {
+const MetricBlock = ({
+  label,
+  value,
+  helper,
+  tone = 'cyan',
+  loading = false,
+  loadingText = 'Syncing signal…',
+  refreshing = false,
+  unavailable = false,
+  unavailableText = 'Signal unavailable',
+}) => {
   const toneMap = {
     cyan: 'from-cyan-300/24 text-cyan-100 border-cyan-200/18',
     violet: 'from-violet-300/24 text-violet-100 border-violet-200/18',
@@ -43,8 +60,24 @@ const MetricBlock = ({ label, value, helper, tone = 'cyan' }) => {
   return (
     <div className={cn('group relative overflow-hidden rounded-[1.65rem] border bg-gradient-to-br via-white/[0.055] to-transparent p-5 transition-all duration-300 hover:-translate-y-1 hover:bg-white/[0.08]', toneMap[tone])}>
       <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-current to-transparent opacity-60" />
+      {refreshing && !loading && !unavailable && <div className="data-scan-line" />}
+
       <div className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-400">{label}</div>
-      <div className="mt-3 text-4xl font-black tracking-[-0.06em] text-white md:text-5xl">{value}</div>
+
+      {loading ? (
+        <MetricSkeletonValue label={loadingText} />
+      ) : unavailable ? (
+        <div className="mt-3 rounded-2xl border border-white/10 bg-white/[0.045] px-4 py-3">
+          <div className="text-sm font-black text-slate-300">{unavailableText}</div>
+          <div className="mt-1 text-xs leading-relaxed text-slate-500">Waiting for a valid backend response.</div>
+        </div>
+      ) : (
+        <>
+          <div className="mt-3 text-4xl font-black tracking-[-0.06em] text-white md:text-5xl">{value}</div>
+          {refreshing && <LoadingText className="mt-2">Refreshing signal…</LoadingText>}
+        </>
+      )}
+
       <p className="mt-3 text-xs leading-relaxed text-slate-500">{helper}</p>
     </div>
   );
@@ -100,15 +133,44 @@ const WorkspaceButton = ({ icon, title, description, onClick, tone = 'cyan' }) =
 };
 
 const DashboardOverview = ({ datasetInfo, connectionStatus, onNavigate }) => {
-  const summaryQuery = useQuery({ queryKey: ['dashboard-summary'], queryFn: fetchSummary, staleTime: 1000 * 60 * 5 });
-  const survivalQuery = useQuery({ queryKey: ['dashboard-survival-rates'], queryFn: fetchSurvivalRates, staleTime: 1000 * 60 * 5 });
-  const modelQuery = useQuery({ queryKey: ['dashboard-model'], queryFn: fetchModelInsights, staleTime: 1000 * 60 * 5, retry: 1 });
-  const tateHealthQuery = useQuery({ queryKey: ['dashboard-tate-health'], queryFn: fetchTateHealth, staleTime: 1000 * 30, retry: 1 });
+  const summaryQuery = useQuery({
+    queryKey: ['dashboard-summary'],
+    queryFn: fetchSummary,
+    staleTime: 1000 * 60 * 5,
+  });
+
+  const survivalQuery = useQuery({
+    queryKey: ['dashboard-survival-rates'],
+    queryFn: fetchSurvivalRates,
+    staleTime: 1000 * 60 * 5,
+  });
+
+  const modelQuery = useQuery({
+    queryKey: ['dashboard-model'],
+    queryFn: fetchModelInsights,
+    staleTime: 1000 * 60 * 5,
+    retry: 1,
+  });
+
+  const tateHealthQuery = useQuery({
+    queryKey: ['dashboard-tate-health'],
+    queryFn: fetchTateHealth,
+    staleTime: 1000 * 30,
+    retry: 1,
+  });
 
   const progress = getExplorationProgress();
   const completedTasks = Object.values(progress).filter(Boolean).length;
   const nextTask = getNextExplorationTask(progress);
   const progressPercent = Math.round((completedTasks / Math.max(Object.keys(progress).length, 1)) * 100);
+
+  const dataReady = {
+    dataset: Boolean(datasetInfo?.shape?.length) || summaryQuery.isSuccess || tateHealthQuery.isSuccess,
+    summary: summaryQuery.isSuccess && Boolean(summaryQuery.data),
+    survival: survivalQuery.isSuccess && Boolean(survivalQuery.data),
+    model: modelQuery.isSuccess && Boolean(modelQuery.data),
+    tate: tateHealthQuery.isSuccess && Boolean(tateHealthQuery.data),
+  };
 
   const overview = useMemo(() => {
     const summary = summaryQuery.data || {};
@@ -116,27 +178,27 @@ const DashboardOverview = ({ datasetInfo, connectionStatus, onNavigate }) => {
     const model = modelQuery.data || {};
     const health = tateHealthQuery.data || {};
 
-    const passengerCount =
-      safeNumber(datasetInfo?.shape?.[0]) ??
-      safeNumber(summary?.Age?.count) ??
-      safeNumber(health?.dataset_size);
-
-    const featureCount =
-      safeNumber(datasetInfo?.shape?.[1]) ??
-      safeNumber(Object.keys(summary || {}).length);
-
-    const modelAccuracy = safeNumber(
+    const rawAccuracy =
       model?.model_performance?.accuracy !== undefined
         ? model.model_performance.accuracy * 100
         : model?.accuracy !== undefined
           ? model.accuracy * 100
-          : null
-    );
+          : null;
 
-    const femaleRate = safeNumber(survivalRates?.by_sex?.female !== undefined ? survivalRates.by_sex.female * 100 : null);
-    const maleRate = safeNumber(survivalRates?.by_sex?.male !== undefined ? survivalRates.by_sex.male * 100 : null);
-    const overallSurvival = safeNumber(summary?.Survived?.mean !== undefined ? summary.Survived.mean * 100 : null);
-    const documentCount = safeNumber(health?.document_count) ?? safeNumber(health?.dataset_size) ?? passengerCount;
+    const passengerCount =
+      safeNumber(datasetInfo?.shape?.[0], null) ??
+      safeNumber(summary?.Age?.count, null) ??
+      safeNumber(health?.dataset_size, null);
+
+    const featureCount =
+      safeNumber(datasetInfo?.shape?.[1], null) ??
+      safeNumber(Object.keys(summary || {}).length, null);
+
+    const modelAccuracy = safeNumber(rawAccuracy, null);
+    const femaleRate = safeNumber(survivalRates?.by_sex?.female !== undefined ? survivalRates.by_sex.female * 100 : null, null);
+    const maleRate = safeNumber(survivalRates?.by_sex?.male !== undefined ? survivalRates.by_sex.male * 100 : null, null);
+    const overallSurvival = safeNumber(summary?.Survived?.mean !== undefined ? summary.Survived.mean * 100 : null, null);
+    const documentCount = safeNumber(health?.document_count, null) ?? safeNumber(health?.dataset_size, null) ?? passengerCount;
 
     return {
       passengerCount,
@@ -149,7 +211,36 @@ const DashboardOverview = ({ datasetInfo, connectionStatus, onNavigate }) => {
       backendConnected: connectionStatus === 'connected',
       tateConnected: !tateHealthQuery.isError && Boolean(tateHealthQuery.data),
     };
-  }, [connectionStatus, datasetInfo, modelQuery.data, summaryQuery.data, survivalQuery.data, tateHealthQuery.data, tateHealthQuery.isError]);
+  }, [
+    connectionStatus,
+    datasetInfo,
+    modelQuery.data,
+    summaryQuery.data,
+    survivalQuery.data,
+    tateHealthQuery.data,
+    tateHealthQuery.isError,
+  ]);
+
+  const metricLoading = {
+    passengers: !dataReady.dataset || !hasMeaningfulNumber(overview.passengerCount),
+    model: !dataReady.model || !hasMeaningfulNumber(overview.modelAccuracy),
+    survival: !dataReady.summary || !hasMeaningfulNumber(overview.overallSurvival),
+    search: !dataReady.tate || !hasMeaningfulNumber(overview.documentCount),
+  };
+
+  const metricUnavailable = {
+    passengers: !metricLoading.passengers && dataReady.dataset && !hasMeaningfulNumber(overview.passengerCount),
+    model: modelQuery.isError,
+    survival: summaryQuery.isError,
+    search: tateHealthQuery.isError,
+  };
+
+  const metricRefreshing = {
+    passengers: Boolean(summaryQuery.isFetching && summaryQuery.data),
+    model: Boolean(modelQuery.isFetching && modelQuery.data),
+    survival: Boolean(summaryQuery.isFetching && summaryQuery.data),
+    search: Boolean(tateHealthQuery.isFetching && tateHealthQuery.data),
+  };
 
   const handleNavigate = (view, taskId) => {
     if (taskId) markExplorationTask(taskId);
@@ -216,10 +307,49 @@ const DashboardOverview = ({ datasetInfo, connectionStatus, onNavigate }) => {
           </div>
 
           <div className="grid gap-4 sm:grid-cols-2">
-            <MetricBlock label="Passenger Records" value={formatInteger(overview.passengerCount)} helper="Backend dataset scope displayed without hardcoding." tone="cyan" />
-            <MetricBlock label="Model Accuracy" value={formatPercent(overview.modelAccuracy)} helper="Shown only from the backend model endpoint." tone="violet" />
-            <MetricBlock label="Overall Survival" value={formatPercent(overview.overallSurvival)} helper="Computed from the summary endpoint." tone="emerald" />
-            <MetricBlock label="Search Index" value={formatInteger(overview.documentCount)} helper="Tate/search coverage from health metadata." tone="amber" />
+            <MetricBlock
+              label="Passenger Records"
+              value={formatInteger(overview.passengerCount)}
+              helper="Backend dataset scope displayed without hardcoding."
+              tone="cyan"
+              loading={metricLoading.passengers}
+              refreshing={metricRefreshing.passengers}
+              unavailable={metricUnavailable.passengers}
+              loadingText="Syncing dataset scope…"
+            />
+            <MetricBlock
+              label="Model Accuracy"
+              value={formatPercent(overview.modelAccuracy)}
+              helper="Shown only from the backend model endpoint."
+              tone="violet"
+              loading={metricLoading.model}
+              refreshing={metricRefreshing.model}
+              unavailable={metricUnavailable.model}
+              unavailableText="Model signal offline"
+              loadingText="Calibrating model signal…"
+            />
+            <MetricBlock
+              label="Overall Survival"
+              value={formatPercent(overview.overallSurvival)}
+              helper="Computed from the summary endpoint."
+              tone="emerald"
+              loading={metricLoading.survival}
+              refreshing={metricRefreshing.survival}
+              unavailable={metricUnavailable.survival}
+              unavailableText="Survival signal offline"
+              loadingText="Computing survival rate…"
+            />
+            <MetricBlock
+              label="Search Index"
+              value={formatInteger(overview.documentCount)}
+              helper="Tate/search coverage from health metadata."
+              tone="amber"
+              loading={metricLoading.search}
+              refreshing={metricRefreshing.search}
+              unavailable={metricUnavailable.search}
+              unavailableText="Retrieval signal offline"
+              loadingText="Checking retrieval layer…"
+            />
           </div>
         </div>
       </section>

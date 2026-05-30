@@ -2,6 +2,7 @@
 import React, { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { fetchCorrelation } from '../api/queries';
+import { HeatmapLoadingPanel } from './common/DataState';
 
 const getCorrelationStyle = (value) => {
   const numeric = Number(value);
@@ -63,11 +64,7 @@ const CorrelationHeatmap = () => {
   }, [correlation, features]);
 
   if (isLoading) {
-    return (
-      <div className="flex min-h-[26rem] items-center justify-center">
-        <div className="h-12 w-12 rounded-full border-2 border-cyan-200 border-t-transparent animate-spin" />
-      </div>
-    );
+    return <HeatmapLoadingPanel />;
   }
 
   if (isError) {

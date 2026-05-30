@@ -3,6 +3,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { fetchPassengerData } from '../api/queries';
 import { markExplorationTask } from '../utils/explorationProgress';
+import { MiniMetricSkeleton, TableLoadingPanel, LoadingText } from './common/DataState';
 
 const ITEMS_PER_PAGE = 10;
 const SEARCH_DEBOUNCE_MS = 360;
@@ -136,10 +137,13 @@ const DataTable = () => {
   });
 
   const data = Array.isArray(passengerResponse?.data) ? passengerResponse.data : [];
-  const totalRecords = Number(passengerResponse?.total_records || 0);
-  const totalPages = Number(passengerResponse?.total_pages || Math.max(1, Math.ceil(totalRecords / ITEMS_PER_PAGE)));
+  const hasPassengerResponse = Boolean(passengerResponse);
+  const totalRecords = Number.isFinite(Number(passengerResponse?.total_records)) ? Number(passengerResponse.total_records) : null;
+  const resolvedTotalRecords = totalRecords ?? 0;
+  const totalPages = Number(passengerResponse?.total_pages || Math.max(1, Math.ceil(resolvedTotalRecords / ITEMS_PER_PAGE)));
   const searchEngine = passengerResponse?.search_meta?.engine || (debouncedSearchTerm ? 'backend' : 'all records');
   const loading = isLoading || isFetching;
+  const isFirstLoad = isLoading && !hasPassengerResponse;
   const isSearchActive = searchTerm.trim().length > 0;
   const isDebouncing = searchTerm.trim() !== debouncedSearchTerm;
 
@@ -170,8 +174,8 @@ const DataTable = () => {
     return pages;
   }, [currentPage, totalPages]);
 
-  const startRecord = totalRecords === 0 ? 0 : (currentPage - 1) * ITEMS_PER_PAGE + 1;
-  const endRecord = Math.min(currentPage * ITEMS_PER_PAGE, totalRecords);
+  const startRecord = resolvedTotalRecords === 0 ? 0 : (currentPage - 1) * ITEMS_PER_PAGE + 1;
+  const endRecord = Math.min(currentPage * ITEMS_PER_PAGE, resolvedTotalRecords);
 
   const handleSearchChange = (event) => {
     const value = event.target.value;
@@ -189,6 +193,13 @@ const DataTable = () => {
     setDebouncedSearchTerm('');
     setCurrentPage(1);
     setSelectedRow(null);
+  };
+
+  const runAlenSearchDemo = () => {
+    setSearchTerm('alen');
+    setCurrentPage(1);
+    setSelectedRow(null);
+    markExplorationTask('passengerSearchUsed');
   };
 
   const handleSort = (key) => {
@@ -244,7 +255,7 @@ const DataTable = () => {
                   type="search"
                   value={searchTerm}
                   onChange={handleSearchChange}
-                  placeholder="Search name, ticket, cabin, ID, title..."
+                  placeholder="Try “alen” to see typo-tolerant passenger search..."
                   className="min-w-0 flex-1 bg-transparent text-sm font-semibold text-white placeholder:text-slate-600 focus:outline-none"
                 />
                 {isSearchActive && (
@@ -261,20 +272,44 @@ const DataTable = () => {
 
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:w-[32rem]">
               <div className="rounded-2xl border border-white/10 bg-white/[0.045] p-4">
-                <div className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">Records</div>
-                <div className="mt-1 text-xl font-black text-white">{totalRecords.toLocaleString('en-US')}</div>
+                {isFirstLoad ? (
+                  <MiniMetricSkeleton label="records" />
+                ) : (
+                  <>
+                    <div className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">Records</div>
+                    <div className="mt-1 text-xl font-black text-white">{totalRecords === null ? '—' : totalRecords.toLocaleString('en-US')}</div>
+                  </>
+                )}
               </div>
               <div className="rounded-2xl border border-white/10 bg-white/[0.045] p-4">
-                <div className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">Page</div>
-                <div className="mt-1 text-xl font-black text-white">{currentPage}/{totalPages}</div>
+                {isFirstLoad ? (
+                  <MiniMetricSkeleton label="page" />
+                ) : (
+                  <>
+                    <div className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">Page</div>
+                    <div className="mt-1 text-xl font-black text-white">{currentPage}/{totalPages}</div>
+                  </>
+                )}
               </div>
               <div className="rounded-2xl border border-white/10 bg-white/[0.045] p-4">
-                <div className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">Engine</div>
-                <div className="mt-1 truncate text-sm font-black capitalize text-white">{searchEngine.replace(/_/g, ' ')}</div>
+                {isFirstLoad ? (
+                  <MiniMetricSkeleton label="engine" />
+                ) : (
+                  <>
+                    <div className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">Engine</div>
+                    <div className="mt-1 truncate text-sm font-black capitalize text-white">{searchEngine.replace(/_/g, ' ')}</div>
+                  </>
+                )}
               </div>
               <div className="rounded-2xl border border-white/10 bg-white/[0.045] p-4">
-                <div className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">Query</div>
-                <div className="mt-1 truncate text-sm font-black text-white">{debouncedSearchTerm || 'All records'}</div>
+                {isFirstLoad ? (
+                  <MiniMetricSkeleton label="query" />
+                ) : (
+                  <>
+                    <div className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">Query</div>
+                    <div className="mt-1 truncate text-sm font-black text-white">{debouncedSearchTerm || 'All records'}</div>
+                  </>
+                )}
               </div>
             </div>
           </div>
@@ -284,6 +319,47 @@ const DataTable = () => {
               <div className="h-full w-1/2 animate-[shimmer-line_1.2s_ease-in-out_infinite] rounded-full bg-gradient-to-r from-transparent via-cyan-300 to-transparent" />
             </div>
           )}
+
+          <div className="mt-5 overflow-hidden rounded-[1.35rem] border border-emerald-200/15 bg-gradient-to-r from-emerald-300/[0.08] via-cyan-300/[0.045] to-white/[0.035] p-4">
+            <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="rounded-full border border-emerald-200/20 bg-emerald-300/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-emerald-100">
+                    Intelligent Search Demo
+                  </span>
+                  <span className="rounded-full border border-cyan-200/15 bg-cyan-300/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-cyan-100">
+                    Meilisearch powered
+                  </span>
+                </div>
+
+                <h3 className="mt-3 text-lg font-black tracking-[-0.035em] text-white">
+                  Try a misspelled name and watch retrieval still find the right passengers.
+                </h3>
+                <p className="mt-2 max-w-4xl text-sm leading-relaxed text-slate-400">
+                  Type <span className="font-black text-emerald-100">alen</span>. The backend search layer can return close passenger matches such as Allen, helping users understand that this is not a simple browser table filter.
+                </p>
+              </div>
+
+              <div className="flex flex-col gap-2 sm:flex-row xl:shrink-0">
+                <button
+                  type="button"
+                  onClick={runAlenSearchDemo}
+                  className="rounded-2xl bg-white px-4 py-3 text-sm font-black text-slate-950 shadow-lg shadow-white/10 transition hover:-translate-y-0.5 hover:bg-emerald-50"
+                >
+                  Try “alen” search →
+                </button>
+                {isSearchActive && (
+                  <button
+                    type="button"
+                    onClick={clearSearch}
+                    className="rounded-2xl border border-white/10 bg-white/[0.06] px-4 py-3 text-sm font-black text-slate-300 transition hover:bg-white/[0.1] hover:text-white"
+                  >
+                    Reset search
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
         </div>
 
         <div className="hidden overflow-x-auto mobile-scroll lg:block">
@@ -312,7 +388,13 @@ const DataTable = () => {
             </thead>
 
             <tbody className="divide-y divide-white/10">
-              {data.length > 0 ? data.map((row) => {
+              {isFirstLoad ? (
+                <tr>
+                  <td colSpan={columns.length} className="px-4 py-8">
+                    <TableLoadingPanel columns={6} rows={7} />
+                  </td>
+                </tr>
+              ) : data.length > 0 ? data.map((row) => {
                 const isSelected = selectedRow?.PassengerId === row.PassengerId;
                 return (
                   <tr
@@ -346,7 +428,9 @@ const DataTable = () => {
         </div>
 
         <div className="space-y-3 p-4 lg:hidden">
-          {data.length > 0 ? data.map((row) => (
+          {isFirstLoad ? (
+            <TableLoadingPanel columns={2} rows={6} />
+          ) : data.length > 0 ? data.map((row) => (
             <button
               key={row.PassengerId || row.Name}
               type="button"
@@ -368,7 +452,13 @@ const DataTable = () => {
 
         <div className="flex flex-col gap-4 border-t border-white/10 p-5 sm:flex-row sm:items-center sm:justify-between">
           <div className="text-xs font-semibold text-slate-500">
-            Showing <span className="text-slate-200">{startRecord}</span>–<span className="text-slate-200">{endRecord}</span> of <span className="text-slate-200">{totalRecords.toLocaleString('en-US')}</span>
+            {isFirstLoad ? (
+              <LoadingText>Preparing passenger table…</LoadingText>
+            ) : (
+              <>
+                Showing <span className="text-slate-200">{startRecord}</span>–<span className="text-slate-200">{endRecord}</span> of <span className="text-slate-200">{totalRecords === null ? '—' : totalRecords.toLocaleString('en-US')}</span>
+              </>
+            )}
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <button

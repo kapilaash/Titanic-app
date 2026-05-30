@@ -16,6 +16,7 @@ import {
   fetchRegressionFeatureAnalysis,
 } from '../api/queries';
 import { markExplorationTask } from '../utils/explorationProgress';
+import { ModelLoadingPanel } from './common/DataState';
 
 const chartColors = ['#22d3ee', '#a78bfa', '#34d399', '#fbbf24', '#fb7185', '#60a5fa', '#818cf8', '#2dd4bf'];
 
@@ -186,11 +187,7 @@ const RegressionAnalysis = () => {
   };
 
   if (isLoading) {
-    return (
-      <div className="flex min-h-[30rem] items-center justify-center">
-        <div className="h-12 w-12 rounded-full border-2 border-violet-200 border-t-transparent animate-spin" />
-      </div>
-    );
+    return <ModelLoadingPanel />;
   }
 
   if (isError) {
@@ -284,7 +281,7 @@ const RegressionAnalysis = () => {
               )}
               <div className="mt-5 grid gap-3 sm:grid-cols-2">
                 <MetricPanel label="CV Mean" value={formatPercent(modelPerformance.cv_mean ?? crossValidation.mean)} helper="Average validation score." tone="cyan" />
-                <MetricPanel label="Overfit Gap" value={formatPercentPoint(Number(modelPerformance.overfitting_gap || 0) * 100)} helper="Train accuracy minus test accuracy." tone="violet" />
+                <MetricPanel label="Overfit Gap" value={Number.isFinite(Number(modelPerformance.overfitting_gap)) ? formatPercentPoint(Number(modelPerformance.overfitting_gap) * 100) : '—'} helper="Train accuracy minus test accuracy." tone="violet" />
               </div>
             </div>
           </div>

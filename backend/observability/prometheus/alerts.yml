@@ -1,3 +1,4 @@
+# observability\prometheus\alerts.yml
 groups:
   - name: titanic-platform-health
     rules:

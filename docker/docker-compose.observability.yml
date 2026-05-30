@@ -1,4 +1,5 @@
-#docker-compose.observability.yml
+# docker-compose.observability.yml
+name: titanic-observability
 services:
   meilisearch:
     image: getmeili/meilisearch:latest
@@ -23,8 +24,8 @@ services:
     ports:
       - "9090:9090"
     volumes:
-      - ./observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
-      - ./observability/prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
+      - ../backend/observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ../backend/observability/prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
       - prometheus_data:/prometheus
     depends_on:
       - alertmanager
@@ -42,7 +43,7 @@ services:
     ports:
       - "9093:9093"
     volumes:
-      - ./observability/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - ../backend/observability/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
       - alertmanager_data:/alertmanager
     networks:
       - titanic_observability
@@ -55,7 +56,7 @@ services:
     ports:
       - "9115:9115"
     volumes:
-      - ./observability/blackbox/blackbox.yml:/etc/blackbox_exporter/config.yml:ro
+      - ../backend/observability/blackbox/blackbox.yml:/etc/blackbox_exporter/config.yml:ro
     networks:
       - titanic_observability
 
@@ -73,8 +74,8 @@ services:
       GF_METRICS_ENABLED: "true"
     volumes:
       - grafana_data:/var/lib/grafana
-      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
-      - ./observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - ../backend/observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ../backend/observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
     depends_on:
       - prometheus
       - pyroscope
@@ -99,7 +100,12 @@ networks:
 
 volumes:
   meili_data:
+    name: titanic_meili_data
   prometheus_data:
+    name: titanic_prometheus_data
   alertmanager_data:
+    name: titanic_alertmanager_data
   grafana_data:
+    name: titanic_grafana_data
   pyroscope_data:
+    name: titanic_pyroscope_data

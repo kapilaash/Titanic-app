@@ -12,6 +12,7 @@ import {
   Cell,
 } from 'recharts';
 import { fetchSurvivalRates } from '../api/queries';
+import { ChartLoadingPanel } from './common/DataState';
 
 const chartColors = ['#22d3ee', '#a78bfa', '#34d399', '#fbbf24', '#fb7185', '#60a5fa'];
 
@@ -52,9 +53,11 @@ const SurvivalCharts = () => {
 
   if (isLoading) {
     return (
-      <div className="flex min-h-[26rem] items-center justify-center">
-        <div className="h-12 w-12 rounded-full border-2 border-cyan-200 border-t-transparent animate-spin" />
-      </div>
+      <ChartLoadingPanel
+        title="Preparing survival intelligence"
+        description="Class, gender, embarkation, and title-level survival rates are being fetched from the backend."
+        bars={6}
+      />
     );
   }
 

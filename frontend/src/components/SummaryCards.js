@@ -2,6 +2,7 @@
 import React from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { fetchSummary } from '../api/queries';
+import { MetricCardSkeleton } from './common/DataState';
 
 const formatNumber = (value, decimals = 0, suffix = '') => {
   const numeric = Number(value);
@@ -22,8 +23,8 @@ const SummaryCards = ({ compact = false }) => {
   if (isLoading) {
     return (
       <div className={`grid gap-3 ${compact ? 'grid-cols-2' : 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-4'}`}>
-        {[0, 1, 2, 3].map((item) => (
-          <div key={item} className="h-24 animate-pulse rounded-2xl border border-white/10 bg-white/[0.06]" />
+        {['Passengers', 'Age', 'Fare', 'Survival'].map((label) => (
+          <MetricCardSkeleton key={label} compact={compact} label={`Syncing ${label.toLowerCase()}…`} />
         ))}
       </div>
     );
