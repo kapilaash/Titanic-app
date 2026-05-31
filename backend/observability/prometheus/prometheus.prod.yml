@@ -1,0 +1,42 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+            - alertmanager.railway.internal:9093
+
+rule_files:
+  - /etc/prometheus/alerts.yml
+
+scrape_configs:
+  - job_name: "prometheus"
+    static_configs:
+      - targets: ["localhost:9090"]
+
+  - job_name: "titanic-backend"
+    metrics_path: "/metrics"
+    scheme: https
+    static_configs:
+      - targets:
+          - titanic-app-production.up.railway.app
+
+  - job_name: "service-health"
+    metrics_path: /probe
+    params:
+      module: [http_2xx]
+    static_configs:
+      - targets:
+          - https://titanic-app-production.up.railway.app/api/health
+          - https://titanic-app-production.up.railway.app/api/copilot/health
+          - https://titanic-app-production.up.railway.app/api/observability/health
+          - https://meilisearch-production-b189.up.railway.app/health
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: blackbox-exporter.railway.internal:9115
