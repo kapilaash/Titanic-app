@@ -2,7 +2,11 @@ FROM grafana/grafana:latest
 
 USER root
 
-COPY docker/grafana-entrypoint.sh /grafana-entrypoint.sh
-RUN chmod +x /grafana-entrypoint.sh
+COPY backend/observability/grafana/provisioning /etc/grafana/provisioning
+COPY backend/observability/grafana/dashboards /var/lib/grafana/dashboards
 
-ENTRYPOINT ["/grafana-entrypoint.sh"]
+RUN mkdir -p /var/lib/grafana/plugins \
+    && chown -R 472:0 /var/lib/grafana /etc/grafana/provisioning \
+    && chmod -R g+rwX /var/lib/grafana /etc/grafana/provisioning
+
+USER 472
