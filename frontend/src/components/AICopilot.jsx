@@ -1,5 +1,5 @@
 // components/AICopilot.jsx
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import api from '../api/client';
 import {
@@ -124,40 +124,40 @@ const AICopilot = ({ activeView, onNavigate }) => {
     };
   }, [isOpen]);
 
-  const createInitialWelcomeMessage = () => ({
+  const createInitialWelcomeMessage = useCallback(() => ({
     id: Date.now(),
     role: 'assistant',
     content: `⚓ **Welcome aboard the Titanic Intelligence Platform**\n\nI'm **Tate** — the cognitive interface for this project.\n\nAsk me about passengers, survival patterns, model accuracy, feature importance, search behavior, or how the platform is engineered.`,
     type: 'welcome',
     timestamp: new Date().toISOString(),
-  });
+  }), []);
 
-  const checkApiHealth = async () => {
+  const checkApiHealth = useCallback(async () => {
     try {
       const response = await api.get('/copilot/health', { timeout: 3000 });
       setHealthInfo(response.data);
       setApiStatus('healthy');
       setConnectionError('');
 
-      if (messages.length === 0) {
-        setMessages([createInitialWelcomeMessage()]);
-      }
+      setMessages((previous) => (
+        previous.length > 0 ? previous : [createInitialWelcomeMessage()]
+      ));
     } catch (error) {
       setApiStatus('unhealthy');
       setHealthInfo(null);
       setConnectionError(error.message);
 
-      if (messages.length === 0) {
-        setMessages([{
+      setMessages((previous) => (
+        previous.length > 0 ? previous : [{
           id: Date.now(),
           role: 'assistant',
           content: `⚠️ **Connection Issue**\n\nI cannot connect to the live Tate backend right now. I will not guess or use hardcoded Titanic values.\n\nStart the Flask backend, then retry the connection.`,
           type: 'error',
           timestamp: new Date().toISOString(),
-        }]);
-      }
+        }]
+      ));
     }
-  };
+  }, [createInitialWelcomeMessage]);
 
   const openTate = () => {
     markExplorationTask('aiOpened');
@@ -192,23 +192,23 @@ const AICopilot = ({ activeView, onNavigate }) => {
   useEffect(() => {
     if (!isOpen) return;
 
-    if (messages.length === 0) {
-      setMessages([createInitialWelcomeMessage()]);
-    }
+    setMessages((previous) => (
+      previous.length > 0 ? previous : [createInitialWelcomeMessage()]
+    ));
 
     checkApiHealth();
 
     window.setTimeout(() => {
       inputRef.current?.focus();
     }, 80);
-  }, [isOpen]);
+  }, [isOpen, checkApiHealth, createInitialWelcomeMessage]);
 
   useEffect(() => {
     if (isOpen) {
       updateContext(activeView);
       loadQuickActions(activeView);
     }
-  }, [activeView, isOpen]);
+  }, [activeView, isOpen, updateContext, loadQuickActions]);
 
   useEffect(() => {
     if (messagesContainerRef.current) {
@@ -220,15 +220,15 @@ const AICopilot = ({ activeView, onNavigate }) => {
     if (messages.length > 0) persistMessages(messages);
   }, [messages]);
 
-  const updateContext = async (context) => {
+  const updateContext = useCallback(async (context) => {
     try {
       await api.post('/copilot/set-context', { context }, { timeout: 3000 });
     } catch (error) {
       console.warn('Context update failed:', error.message);
     }
-  };
+  }, []);
 
-  const loadQuickActions = async (context) => {
+  const loadQuickActions = useCallback(async (context) => {
     try {
       const response = await api.get('/copilot/quick-actions', {
         params: { context },
@@ -250,7 +250,7 @@ const AICopilot = ({ activeView, onNavigate }) => {
         { icon: '⌬', label: 'Build Story', action: 'navigate:engineering', type: 'navigation' },
       ]);
     }
-  };
+  }, []);
 
   const handleSend = async (overrideQuestion = null) => {
     const questionToSend = typeof overrideQuestion === 'string' ? overrideQuestion : input;
@@ -514,7 +514,7 @@ const AICopilot = ({ activeView, onNavigate }) => {
               aria-label="Reset Tate conversation"
               title="Reset Tate conversation"
             >
-              {isClearingMemory ? 'Resetting' : 'New Chat'}
+              {isClearingMemory ? 'Resetting' : 'Reset'}
             </button>
           </div>
         </div>

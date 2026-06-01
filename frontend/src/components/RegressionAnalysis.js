@@ -136,7 +136,10 @@ const RegressionAnalysis = () => {
       ? crossValidation.scores
       : [];
 
-  const featureImportance = regressionData?.feature_importance || {};
+  const featureImportance = useMemo(
+    () => regressionData?.feature_importance || {},
+    [regressionData?.feature_importance]
+  );
   const samplePredictions = Array.isArray(regressionData?.sample_predictions)
     ? regressionData.sample_predictions
     : [];

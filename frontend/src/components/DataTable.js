@@ -136,7 +136,10 @@ const DataTable = () => {
     staleTime: 1000 * 20,
   });
 
-  const data = Array.isArray(passengerResponse?.data) ? passengerResponse.data : [];
+  const data = useMemo(
+    () => (Array.isArray(passengerResponse?.data) ? passengerResponse.data : []),
+    [passengerResponse?.data]
+  );
   const hasPassengerResponse = Boolean(passengerResponse);
   const totalRecords = Number.isFinite(Number(passengerResponse?.total_records)) ? Number(passengerResponse.total_records) : null;
   const resolvedTotalRecords = totalRecords ?? 0;

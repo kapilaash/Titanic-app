@@ -12,10 +12,14 @@ const VALID_MANUAL_COMPLETION_SOURCES = new Set([
 ]);
 
 const getApiBaseUrl = () => {
-  const envBaseUrl = import.meta?.env?.VITE_API_BASE_URL || import.meta?.env?.VITE_BACKEND_URL;
+  const envBaseUrl =
+    process.env.REACT_APP_API_BASE_URL ||
+    process.env.REACT_APP_BACKEND_URL;
 
   if (envBaseUrl) {
-    return envBaseUrl.replace(/\/$/, '');
+    return envBaseUrl
+      .replace(/\/api\/?$/, '')
+      .replace(/\/$/, '');
   }
 
   if (typeof window !== 'undefined' && window.location.hostname !== 'localhost') {
