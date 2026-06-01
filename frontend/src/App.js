@@ -59,7 +59,7 @@ function App() {
   const navigationItems = useMemo(() => [
     { id: 'dashboard', label: 'Command', icon: '◎', description: 'Executive OS' },
     { id: 'analysis', label: 'Analysis', icon: '▧', description: 'Signals' },
-    { id: 'regression', label: 'ML Lab', icon: '◈', description: 'Model' },
+    { id: 'regression', label: 'ML', icon: '◈', description: 'Model' },
     { id: 'data', label: 'Explorer', icon: '▤', description: 'Records' },
     { id: 'engineering', label: 'Build', icon: '⌬', description: 'Architecture' },
   ], []);

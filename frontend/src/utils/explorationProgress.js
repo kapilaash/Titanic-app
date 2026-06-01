@@ -56,50 +56,56 @@ export const trackFrontendEvent = async ({
 };
 
 /*
+  Mission copy rule:
+  - Keep titles short and action-based.
+  - Describe exactly what the user must do.
+  - Avoid internal/product-heavy phrases in mission titles.
+  - Keep architecture/value explanation inside the guide summary, after the action is clear.
+
   Completion modes:
   - manual: the mission does NOT complete just because a page renders or navigation happens.
-    The Mission Guide must call markExplorationTask(taskId, { source: 'mission_interaction' }).
+    Tate Mission Control must call markExplorationTask(taskId, { source: 'mission_interaction' }).
   - interaction: the mission completes only when a real interaction occurs inside the relevant component,
     such as search, sort, opening Tate, asking Tate, or switching ML tabs.
 */
 export const EXPLORATION_TASKS = [
   {
     id: 'dashboardViewed',
-    title: 'Scan the live dashboard',
-    description: 'Open the dashboard and confirm the command-center signals are visible.',
-    guideTitle: 'Dashboard Signal Scan',
+    title: 'Review the dashboard',
+    description: 'Look at the live status, passenger records, model accuracy, survival rate, and search index.',
+    guideTitle: 'Review the Dashboard',
     guideSummary:
-      'The dashboard is the entry point. It should feel like a command center, not a static landing page.',
+      'Start with the dashboard because it gives users the quickest overview of the platform. Review the live backend status and the main metrics before moving into deeper analysis.',
     guideSteps: [
-      'Go to the Dashboard.',
-      'Review the live status, metrics, and architecture summary.',
-      'Click the mission confirmation button to record that you intentionally scanned the dashboard.',
+      'Open the Command section.',
+      'Look at the backend status and the metric cards.',
+      'Confirm this mission after you have reviewed the dashboard section.',
     ],
-    guideSuccess: 'Confirm that you reviewed the dashboard signals.',
+    guideSuccess: 'Confirm that you reviewed the dashboard metrics.',
     completionMode: 'manual',
-    completionLabel: 'Confirm dashboard scan',
-    completionHint: 'This mission requires a confirmation click inside the Dashboard.',
+    completionLabel: 'Confirm dashboard review',
+    completionHint: 'Review the dashboard metrics, then confirm this mission.',
     icon: '📊',
     section: 'dashboard',
-    actionLabel: 'Go to Dashboard',
+    actionLabel: 'Open Dashboard',
     layer: 'Overview',
   },
   {
     id: 'analysisViewed',
-    title: 'Interact with survival analysis',
-    description: 'Open Analysis and confirm the survival analytics workspace has been reviewed.',
-    guideTitle: 'Survival Analysis Interaction',
+    title: 'Review survival charts',
+    description: 'Open Analysis and review the charts that explain Titanic survival patterns.',
+    guideTitle: 'Review Survival Analysis',
     guideSummary:
-      'The Analysis page presents survival patterns, chart reasoning, and correlation evidence.',
+      'This mission helps users understand the chart-based evidence behind the dataset. Review the survival patterns by class, gender, or other visible analysis views.',
     guideSteps: [
-      'Open the Analysis workspace.',
-      'Review at least one survival chart or correlation view.',
-      'Confirm the analysis review from the mission guide.',
+      'Open the Analysis section.',
+      'Review at least one survival chart or comparison panel.',
+      'Confirm this mission after you understand what the chart is showing.',
     ],
-    guideSuccess: 'Confirm that you reviewed the analysis workspace.',
+    guideSuccess: 'Confirm that you reviewed the survival analysis workspace.',
     completionMode: 'manual',
     completionLabel: 'Confirm analysis review',
-    completionHint: 'This mission requires a confirmation click after entering Analysis.',
+    completionHint: 'Review at least one analysis chart, then confirm this mission.',
     icon: '📈',
     section: 'analysis',
     actionLabel: 'Open Analysis',
@@ -107,20 +113,20 @@ export const EXPLORATION_TASKS = [
   },
   {
     id: 'mlViewed',
-    title: 'Inspect ML insights',
-    description: 'Open ML Insights and confirm the backend-powered model section has been reviewed.',
-    guideTitle: 'Machine Learning Inspection',
+    title: 'Inspect model results',
+    description: 'Open ML Insights and review the backend-powered model accuracy and model summary.',
+    guideTitle: 'Inspect ML Insights',
     guideSummary:
-      'The ML page demonstrates model performance, backend accuracy, feature importance, and predictions.',
+      'This mission shows that the model section is connected to backend results. Review the model accuracy, model summary, and any available prediction information.',
     guideSteps: [
-      'Open ML Insights.',
-      'Look at the model performance summary.',
-      'Confirm that you inspected the model workspace.',
+      'Open the ML Insights section.',
+      'Review the model accuracy and model performance summary.',
+      'Confirm this mission after you inspect the model results.',
     ],
-    guideSuccess: 'Confirm that you inspected ML Insights.',
+    guideSuccess: 'Confirm that you inspected the ML Insights overview.',
     completionMode: 'manual',
     completionLabel: 'Confirm ML inspection',
-    completionHint: 'This mission requires a confirmation click inside ML Insights.',
+    completionHint: 'Review the model results, then confirm this mission.',
     icon: '🤖',
     section: 'regression',
     actionLabel: 'Open ML Insights',
@@ -128,19 +134,19 @@ export const EXPLORATION_TASKS = [
   },
   {
     id: 'mlExplored',
-    title: 'Open a model evidence tab',
-    description: 'Switch to Feature Impact or Feature Analysis inside ML Insights.',
-    guideTitle: 'Model Evidence Interaction',
+    title: 'Open model evidence',
+    description: 'Open Feature Impact or Feature Analysis to see which variables influenced the model.',
+    guideTitle: 'Open Model Evidence',
     guideSummary:
-      'A model is more credible when users inspect the evidence behind the prediction, not only the accuracy number.',
+      'This mission helps users move beyond the accuracy number. Feature evidence explains which passenger attributes influenced the survival model.',
     guideSteps: [
-      'Stay in ML Insights.',
+      'Stay in the ML Insights section.',
       'Click Feature Impact or Feature Analysis.',
-      'Review how the backend model explains passenger survival behavior.',
+      'Review the variables that matter most to the survival model.',
     ],
-    guideSuccess: 'Click Feature Impact or Feature Analysis in ML Insights.',
+    guideSuccess: 'Open Feature Impact or Feature Analysis in ML Insights.',
     completionMode: 'interaction',
-    completionHint: 'This mission completes when the user changes to an ML evidence tab.',
+    completionHint: 'This mission completes when you open a model evidence tab.',
     icon: '🎯',
     section: 'regression',
     actionLabel: 'Inspect Features',
@@ -148,19 +154,19 @@ export const EXPLORATION_TASKS = [
   },
   {
     id: 'predictionChecked',
-    title: 'Check prediction examples',
-    description: 'Open the Predictions tab and inspect sample passenger predictions.',
-    guideTitle: 'Prediction Review Interaction',
+    title: 'Check sample predictions',
+    description: 'Open the Predictions tab and review the sample survival predictions.',
+    guideTitle: 'Check Sample Predictions',
     guideSummary:
-      'The prediction mission proves the frontend is reading prediction objects returned by the backend model endpoint.',
+      'This mission shows users that the ML section can display prediction examples, not only static model accuracy.',
     guideSteps: [
-      'Open ML Insights.',
+      'Open the ML Insights section.',
       'Click the Predictions tab.',
-      'Review at least one sample prediction card.',
+      'Review at least one sample prediction result.',
     ],
-    guideSuccess: 'Click the Predictions tab inside ML Insights.',
+    guideSuccess: 'Open the Predictions tab inside ML Insights.',
     completionMode: 'interaction',
-    completionHint: 'This mission completes when the Predictions tab is opened.',
+    completionHint: 'This mission completes when you open the Predictions tab.',
     icon: '🧑‍✈️',
     section: 'regression',
     actionLabel: 'Check Predictions',
@@ -168,20 +174,20 @@ export const EXPLORATION_TASKS = [
   },
   {
     id: 'dataExplorerOpened',
-    title: 'Inspect the Data Explorer',
-    description: 'Open the Data Explorer and confirm that row-level passenger data is visible.',
-    guideTitle: 'Data Explorer Inspection',
+    title: 'Review passenger records',
+    description: 'Open Data Explorer and inspect the passenger table.',
+    guideTitle: 'Review Passenger Records',
     guideSummary:
-      'The Data Explorer validates the records behind the dashboard, search, model, and Tate responses.',
+      'This mission helps users connect the charts and model outputs back to the actual passenger records in the dataset.',
     guideSteps: [
-      'Open Data Explorer.',
-      'Review the table controls and row-level passenger fields.',
-      'Confirm that you inspected the data workspace.',
+      'Open the Data Explorer section.',
+      'Review the table controls and passenger columns.',
+      'Confirm this mission after you inspect the records.',
     ],
-    guideSuccess: 'Confirm that you inspected the Data Explorer.',
+    guideSuccess: 'Confirm that you reviewed the Data Explorer.',
     completionMode: 'manual',
-    completionLabel: 'Confirm data inspection',
-    completionHint: 'This mission requires a confirmation click inside Data Explorer.',
+    completionLabel: 'Confirm data review',
+    completionHint: 'Review the passenger table, then confirm this mission.',
     icon: '📋',
     section: 'data',
     actionLabel: 'Open Data Explorer',
@@ -189,39 +195,39 @@ export const EXPLORATION_TASKS = [
   },
   {
     id: 'passengerSearchUsed',
-    title: 'Test intelligent search with “alen”',
-    description: 'Use the Data Explorer demo search. Try “alen” to see typo-tolerant passenger retrieval.',
-    guideTitle: 'Meilisearch Interaction',
+    title: 'Search for “alen”',
+    description: 'Use the Data Explorer search demo. Try “alen” to see typo-tolerant passenger retrieval.',
+    guideTitle: 'Search with “alen”',
     guideSummary:
-      'This mission explains the intelligent search layer. A user can type a rough or misspelled name such as “alen” and see the backend return relevant passenger matches instead of relying on a simple current-page table filter.',
+      'This mission demonstrates intelligent search. Type “alen” or use the search demo to see how the backend can return close passenger matches such as Allen instead of only filtering the current page.',
     guideSteps: [
-      'Open Data Explorer.',
+      'Open the Data Explorer section.',
       'Click the “Try alen search” demo button or type “alen” manually.',
-      'Review the returned passenger matches and the search engine indicator.',
+      'Review the returned passenger matches.',
     ],
     guideSuccess: 'Use the Data Explorer search box or the “alen” search demo.',
     completionMode: 'interaction',
-    completionHint: 'This mission completes when the user runs a search query.',
+    completionHint: 'This mission completes when you run a search query in Data Explorer.',
     icon: '🔍',
     section: 'data',
     actionLabel: 'Try “alen” Search',
-    layer: 'Meilisearch',
+    layer: 'Search',
   },
   {
     id: 'dataSorted',
-    title: 'Sort a dataset column',
-    description: 'Click a sortable column so the backend returns a dataset-wide sorted response.',
-    guideTitle: 'Dataset Sorting Interaction',
+    title: 'Sort a table column',
+    description: 'Click a sortable column in Data Explorer to reorder the dataset.',
+    guideTitle: 'Sort the Passenger Table',
     guideSummary:
-      'Sorting demonstrates that the table is not only a visual component. It coordinates with backend query behavior.',
+      'This mission helps users understand that the table supports interactive exploration. Sorting makes it easier to compare passenger records across the whole dataset.',
     guideSteps: [
-      'Open Data Explorer.',
-      'Click a sortable table column.',
-      'Observe the reordered backend response.',
+      'Open the Data Explorer section.',
+      'Click a sortable table column such as Age, Fare, Class, or Name.',
+      'Review how the table order changes.',
     ],
     guideSuccess: 'Click a sortable Data Explorer column.',
     completionMode: 'interaction',
-    completionHint: 'This mission completes when a sortable column is clicked.',
+    completionHint: 'This mission completes when you click a sortable table column.',
     icon: '↕️',
     section: 'data',
     actionLabel: 'Sort Data',
@@ -229,15 +235,15 @@ export const EXPLORATION_TASKS = [
   },
   {
     id: 'aiOpened',
-    title: 'Open Tate AI',
-    description: 'Open Tate to see contextual navigation and backend-aware guidance.',
-    guideTitle: 'Tate AI Launch',
+    title: 'Open Tate',
+    description: 'Open Tate to use the AI copilot and Mission Control.',
+    guideTitle: 'Open Tate',
     guideSummary:
-      'Tate is the cognitive interface. Opening it should feel like activating the intelligence layer.',
+      'This mission introduces Tate as the single assistant for questions, navigation, and guided walkthrough support.',
     guideSteps: [
-      'Open Tate using the floating AI launcher or this mission.',
-      'Check that Tate is online.',
-      'Review the suggested actions.',
+      'Click the Tate floating button.',
+      'Check that Tate opens successfully.',
+      'Review the Mission Control bar inside Tate.',
     ],
     guideSuccess: 'Open Tate AI.',
     completionMode: 'interaction',
@@ -250,10 +256,10 @@ export const EXPLORATION_TASKS = [
   {
     id: 'aiQuestionAsked',
     title: 'Ask Tate a question',
-    description: 'Ask about survival, model accuracy, passenger search, or how the app works.',
-    guideTitle: 'AI Question Interaction',
+    description: 'Ask Tate about a passenger, model accuracy, survival patterns, or how the app works.',
+    guideTitle: 'Ask Tate a Question',
     guideSummary:
-      'This mission proves Tate is not decorative. It receives user input and responds with backend-aware context.',
+      'This mission confirms that Tate is an interactive assistant. Ask a simple question and review the answer.',
     guideSteps: [
       'Open Tate.',
       'Ask a question such as “What is the model accuracy?” or “Tell me about Allen”.',
@@ -261,7 +267,7 @@ export const EXPLORATION_TASKS = [
     ],
     guideSuccess: 'Send a question to Tate.',
     completionMode: 'interaction',
-    completionHint: 'This mission completes when a user sends Tate a question.',
+    completionHint: 'This mission completes when you send a question to Tate.',
     icon: '💬',
     section: 'copilot',
     actionLabel: 'Ask Tate',
@@ -270,22 +276,22 @@ export const EXPLORATION_TASKS = [
   {
     id: 'buildStoryViewed',
     title: 'Review the build story',
-    description: 'Open Build Story and confirm the architecture walkthrough has been reviewed.',
-    guideTitle: 'Build Story Review',
+    description: 'Open Build Story and review the project architecture explanation.',
+    guideTitle: 'Review the Build Story',
     guideSummary:
-      'The Build Story turns the project into a guided architecture walkthrough, helping visitors understand the engineering value.',
+      'This mission helps users understand how the project was built. Review the architecture, backend, search, ML, and observability story.',
     guideSteps: [
-      'Open Build Story.',
-      'Review the engineering layers and mission checklist.',
-      'Confirm that you reviewed the architecture story.',
+      'Open the Build Story section.',
+      'Review the main engineering layers.',
+      'Confirm this mission after you understand the architecture walkthrough.',
     ],
     guideSuccess: 'Confirm that you reviewed the Build Story.',
     completionMode: 'manual',
     completionLabel: 'Confirm build story review',
-    completionHint: 'This mission requires a confirmation click inside Build Story.',
+    completionHint: 'Review the Build Story section, then confirm this mission.',
     icon: '⚙️',
     section: 'engineering',
-    actionLabel: 'Build Story',
+    actionLabel: 'Open Build Story',
     layer: 'Architecture',
   },
 ];
@@ -351,9 +357,9 @@ export const markExplorationTask = (taskId, options = {}) => {
   const source = options?.source || 'component_event';
 
   /*
-    View-only missions are intentionally protected.
+    Manual missions are intentionally protected.
     They should not complete from page render, route navigation, IntersectionObserver,
-    or "Next mission" navigation. They complete only from the Mission Guide's
+    or any "Next mission" navigation. They complete only from Tate Mission Control's
     explicit confirmation interaction.
   */
   if (task.completionMode === 'manual' && !VALID_MANUAL_COMPLETION_SOURCES.has(source)) {
