@@ -1,9 +1,13 @@
 // components/AICopilot.jsx
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import api from '../api/client';
 import {
+  EXPLORATION_EVENT,
+  EXPLORATION_TASKS,
   OPEN_COPILOT_EVENT,
+  getExplorationProgress,
+  getNextExplorationTask,
   markExplorationTask,
 } from '../utils/explorationProgress';
 
@@ -11,6 +15,15 @@ const CHAT_STORAGE_KEY = 'tateCopilotMessages:v3';
 const LEGACY_CHAT_STORAGE_KEYS = ['tateCopilotMessages:v2', 'tate_chat_history_v3', 'tate-chat-history'];
 const MAX_STORED_MESSAGES = 40;
 const TATE_STATE_EVENT = 'titanic-tate-state';
+
+const sectionLabelMap = {
+  dashboard: 'Dashboard',
+  analysis: 'Analysis',
+  regression: 'ML Insights',
+  data: 'Data Explorer',
+  copilot: 'Tate AI',
+  engineering: 'Build Story',
+};
 
 const loadStoredMessages = () => {
   try {
@@ -24,77 +37,280 @@ const loadStoredMessages = () => {
 
 const persistMessages = (messages) => {
   try {
-    window.localStorage.setItem(CHAT_STORAGE_KEY, JSON.stringify(messages.slice(-MAX_STORED_MESSAGES)));
-  } catch {
-    // Storage can fail in private browsing; chat should still work.
+    window.localStorage.setItem(
+      CHAT_STORAGE_KEY,
+      JSON.stringify(messages.slice(-MAX_STORED_MESSAGES))
+    );
+  } catch (error) {
+    console.warn('Unable to persist Tate messages:', error);
   }
 };
 
-const InlineMarkdown = ({ text }) => {
-  const textString = typeof text === 'string' ? text : String(text ?? '');
-  const parts = [];
-  let currentIndex = 0;
-  const boldRegex = /\*\*(.*?)\*\*/g;
-  let match;
+const safeText = (value) => {
+  if (value === null || value === undefined) return '';
+  return String(value);
+};
 
-  while ((match = boldRegex.exec(textString)) !== null) {
-    if (match.index > currentIndex) {
-      parts.push({ type: 'text', content: textString.substring(currentIndex, match.index) });
+const cn = (...classes) => classes.filter(Boolean).join(' ');
+
+const renderInlineMarkdown = (text) => {
+  const parts = safeText(text).split(/(\*\*[^*]+\*\*)/g);
+
+  return parts.map((part, index) => {
+    if (part.startsWith('**') && part.endsWith('**')) {
+      return (
+        <strong key={`${part}-${index}`} className="font-black text-white">
+          {part.slice(2, -2)}
+        </strong>
+      );
     }
-    parts.push({ type: 'bold', content: match[1] });
-    currentIndex = boldRegex.lastIndex;
-  }
 
-  if (currentIndex < textString.length) {
-    parts.push({ type: 'text', content: textString.substring(currentIndex) });
-  }
+    return <React.Fragment key={`${part}-${index}`}>{part}</React.Fragment>;
+  });
+};
 
-  if (parts.length === 0) return <span>{textString}</span>;
+const MessageContent = ({ content }) => {
+  const lines = safeText(content).split('\n');
 
   return (
-    <>
-      {parts.map((part, index) => (
-        part.type === 'bold'
-          ? <strong key={`${part.content}-${index}`} className="font-black text-white">{part.content}</strong>
-          : <span key={`${part.content}-${index}`}>{part.content}</span>
-      ))}
-    </>
+    <div className="space-y-2">
+      {lines.map((line, index) => {
+        if (!line.trim()) return <div key={`gap-${index}`} className="h-1" />;
+
+        return (
+          <p key={`${line}-${index}`} className="leading-relaxed">
+            {renderInlineMarkdown(line)}
+          </p>
+        );
+      })}
+    </div>
   );
 };
 
-const MarkdownText = ({ text }) => {
-  if (!text) return null;
-
-  const textString = typeof text === 'string' ? text : String(text);
-  const lines = textString.split('\n');
+const MissionProgressLine = ({ completed, total }) => {
+  const percent = total > 0 ? Math.round((completed / total) * 100) : 0;
 
   return (
-    <div className="space-y-2 text-sm leading-relaxed">
-      {lines.map((line, lineIndex) => {
-        const trimmed = line.trim();
-        if (trimmed === '') return <div key={lineIndex} className="h-1" />;
+    <div className="h-1.5 overflow-hidden rounded-full bg-white/[0.08]">
+      <div
+        className="h-full rounded-full bg-gradient-to-r from-cyan-300 via-blue-400 to-violet-400 transition-all duration-500"
+        style={{ width: `${percent}%` }}
+      />
+    </div>
+  );
+};
 
-        if (trimmed.startsWith('•') || trimmed.startsWith('-')) {
-          return (
-            <div key={lineIndex} className="flex items-start gap-2 pl-1">
-              <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-cyan-300" />
-              <span className="flex-1"><InlineMarkdown text={trimmed.substring(1).trim()} /></span>
+const MissionControlBar = ({
+  activeView,
+  onNavigate,
+  progress,
+  onRefreshProgress,
+  onFocusInput,
+  onClosePanel,
+}) => {
+  const [isExpanded, setIsExpanded] = useState(false);
+
+  const completedCount = useMemo(
+    () => Object.values(progress).filter(Boolean).length,
+    [progress]
+  );
+  const totalCount = EXPLORATION_TASKS.length;
+  const nextMission = useMemo(() => getNextExplorationTask(progress), [progress]);
+  const isAllComplete = !nextMission;
+  const isCorrectSection = nextMission
+    ? nextMission.section === 'copilot' || nextMission.section === activeView
+    : false;
+
+  useEffect(() => {
+    if (isAllComplete) {
+      setIsExpanded(false);
+    }
+  }, [isAllComplete]);
+
+  const handleNavigateToMission = () => {
+    if (!nextMission) return;
+
+    if (nextMission.section === 'copilot') {
+      markExplorationTask('aiOpened');
+      onRefreshProgress();
+
+      if (nextMission.id === 'aiQuestionAsked') {
+        onFocusInput('What is the model accuracy?');
+      } else {
+        onFocusInput();
+      }
+
+      return;
+    }
+
+    if (onNavigate && nextMission.section) {
+      onNavigate(nextMission.section);
+    }
+
+    if (typeof window !== 'undefined' && window.innerWidth < 768) {
+      window.setTimeout(() => onClosePanel(), 120);
+    }
+  };
+
+  const handleManualCompletion = () => {
+    if (!nextMission || nextMission.completionMode !== 'manual' || !isCorrectSection) return;
+
+    markExplorationTask(nextMission.id, {
+      source: 'mission_interaction',
+      metadata: {
+        completedInsideTate: true,
+        activeView,
+      },
+    });
+
+    /*
+      Keep Mission Control expanded after confirmation so users immediately see
+      the next mission's purpose, required action, and steps. This avoids making
+      them click "More" again after every completed mission.
+    */
+    onRefreshProgress();
+    setIsExpanded(true);
+  };
+
+  const actionButton = (() => {
+    if (isAllComplete) {
+      return {
+        label: 'Done',
+        onClick: () => {},
+        disabled: true,
+        className: 'cursor-default border border-emerald-200/20 bg-emerald-300/10 text-emerald-100',
+      };
+    }
+
+    if (!isCorrectSection) {
+      return {
+        label: `Go to ${sectionLabelMap[nextMission.section] || nextMission.section}`,
+        onClick: handleNavigateToMission,
+        disabled: false,
+        className: 'bg-white text-slate-950 hover:bg-cyan-50',
+      };
+    }
+
+    if (nextMission.completionMode === 'manual') {
+      return {
+        label: nextMission.completionLabel || 'Confirm mission',
+        onClick: handleManualCompletion,
+        disabled: false,
+        className: 'bg-gradient-to-r from-cyan-300 to-blue-400 text-slate-950 hover:shadow-cyan-950/30',
+      };
+    }
+
+    return {
+      label: nextMission.section === 'copilot' ? 'Continue in Tate' : `Open ${sectionLabelMap[nextMission.section] || 'section'}`,
+      onClick: handleNavigateToMission,
+      disabled: false,
+      className: 'bg-white text-slate-950 hover:bg-cyan-50',
+    };
+  })();
+
+  return (
+    <div className="shrink-0 border-b border-white/10 bg-slate-950/92 px-3 py-2.5 sm:px-4">
+      <div className="rounded-[1.05rem] border border-cyan-200/15 bg-gradient-to-r from-cyan-300/[0.075] via-white/[0.035] to-violet-400/[0.065] p-3 shadow-[0_12px_35px_rgba(8,47,73,0.12)]">
+        <div className="flex items-center gap-3">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.08] text-lg">
+            {isAllComplete ? '✓' : nextMission.icon}
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setIsExpanded((previous) => !previous)}
+            className="min-w-0 flex-1 text-left"
+            aria-expanded={isExpanded}
+            aria-label="Toggle Tate Mission Control details"
+          >
+            <div className="flex min-w-0 items-center gap-2">
+              <span className="shrink-0 text-[9px] font-black uppercase tracking-[0.16em] text-cyan-200">
+                Mission
+              </span>
+              <span className="shrink-0 rounded-full border border-white/10 bg-white/[0.06] px-2 py-0.5 text-[9px] font-black text-slate-400">
+                {completedCount}/{totalCount}
+              </span>
+              <span className="truncate text-sm font-black text-white">
+                {isAllComplete ? 'Guided journey complete' : nextMission.title}
+              </span>
             </div>
-          );
-        }
 
-        const numberedMatch = trimmed.match(/^(\d+)\.\s+(.*)/);
-        if (numberedMatch) {
-          return (
-            <div key={lineIndex} className="flex items-start gap-2 pl-1">
-              <span className="w-5 shrink-0 text-cyan-200 font-black">{numberedMatch[1]}.</span>
-              <span className="flex-1"><InlineMarkdown text={numberedMatch[2]} /></span>
+            <div className="mt-2">
+              <MissionProgressLine completed={completedCount} total={totalCount} />
             </div>
-          );
-        }
+          </button>
 
-        return <div key={lineIndex}><InlineMarkdown text={line} /></div>;
-      })}
+          <button
+            type="button"
+            onClick={() => setIsExpanded((previous) => !previous)}
+            className="shrink-0 rounded-xl border border-white/10 bg-white/[0.06] px-2.5 py-2 text-[10px] font-black uppercase tracking-[0.12em] text-cyan-100 transition hover:bg-white/[0.1]"
+            aria-label={isExpanded ? 'Collapse mission details' : 'Expand mission details'}
+          >
+            {isExpanded ? 'Less' : 'More'}
+          </button>
+        </div>
+
+        {isExpanded && (
+          <div className="mt-3 space-y-3 border-t border-white/10 pt-3">
+            <p className="text-sm leading-relaxed text-slate-400">
+              {isAllComplete
+                ? 'Tate can still answer questions, explain the architecture, or help demonstrate the platform.'
+                : nextMission.guideSummary || nextMission.description}
+            </p>
+
+            {!isAllComplete && (
+              <div className="rounded-2xl border border-white/10 bg-slate-950/45 p-3">
+                <div className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">
+                  Required action
+                </div>
+                <p className="mt-2 text-xs leading-relaxed text-slate-400">
+                  {nextMission.completionHint || nextMission.guideSuccess || 'Complete the interaction to unlock the next mission.'}
+                </p>
+
+                {Array.isArray(nextMission.guideSteps) && nextMission.guideSteps.length > 0 && (
+                  <ol className="mt-3 space-y-2">
+                    {nextMission.guideSteps.slice(0, 3).map((step, index) => (
+                      <li key={`${nextMission.id}-${step}`} className="flex gap-2 text-xs leading-relaxed text-slate-300">
+                        <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-cyan-300/15 text-[10px] font-black text-cyan-100">
+                          {index + 1}
+                        </span>
+                        <span>{step}</span>
+                      </li>
+                    ))}
+                  </ol>
+                )}
+              </div>
+            )}
+
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <button
+                type="button"
+                onClick={actionButton.onClick}
+                disabled={actionButton.disabled}
+                className={cn(
+                  'rounded-2xl px-4 py-3 text-sm font-black transition disabled:opacity-70',
+                  actionButton.className
+                )}
+              >
+                {actionButton.label}
+              </button>
+
+              {!isAllComplete && nextMission.id === 'passengerSearchUsed' && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (onNavigate) onNavigate('data');
+                    onClosePanel();
+                  }}
+                  className="rounded-2xl border border-white/10 bg-white/[0.06] px-4 py-3 text-sm font-black text-slate-300 transition hover:bg-white/[0.1] hover:text-white"
+                >
+                  Try “alen” in Explorer
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 };
@@ -107,12 +323,16 @@ const AICopilot = ({ activeView, onNavigate }) => {
   const [quickActions, setQuickActions] = useState([]);
   const [apiStatus, setApiStatus] = useState('unknown');
   const [connectionError, setConnectionError] = useState('');
-  const [buildStoryNotice, setBuildStoryNotice] = useState('');
   const [healthInfo, setHealthInfo] = useState(null);
   const [isClearingMemory, setIsClearingMemory] = useState(false);
+  const [progress, setProgress] = useState(() => getExplorationProgress());
 
   const messagesContainerRef = useRef(null);
   const inputRef = useRef(null);
+
+  const refreshProgress = useCallback(() => {
+    setProgress(getExplorationProgress());
+  }, []);
 
   useEffect(() => {
     document.documentElement.classList.toggle('tate-panel-open', isOpen);
@@ -124,10 +344,17 @@ const AICopilot = ({ activeView, onNavigate }) => {
     };
   }, [isOpen]);
 
+  useEffect(() => {
+    const handleProgressChange = () => refreshProgress();
+
+    window.addEventListener(EXPLORATION_EVENT, handleProgressChange);
+    return () => window.removeEventListener(EXPLORATION_EVENT, handleProgressChange);
+  }, [refreshProgress]);
+
   const createInitialWelcomeMessage = useCallback(() => ({
     id: Date.now(),
     role: 'assistant',
-    content: `⚓ **Welcome aboard the Titanic Intelligence Platform**\n\nI'm **Tate** — the cognitive interface for this project.\n\nAsk me about passengers, survival patterns, model accuracy, feature importance, search behavior, or how the platform is engineered.`,
+    content: `⚓ **Welcome aboard the Titanic Intelligence Platform**\n\nI'm **Tate** — your AI copilot and mission-control guide.\n\nAsk about passengers, survival patterns, model accuracy, feature importance, search behavior, or continue the guided walkthrough from the compact Mission Control bar.`,
     type: 'welcome',
     timestamp: new Date().toISOString(),
   }), []);
@@ -159,49 +386,20 @@ const AICopilot = ({ activeView, onNavigate }) => {
     }
   }, [createInitialWelcomeMessage]);
 
-  const openTate = () => {
+  const openTate = useCallback(() => {
     markExplorationTask('aiOpened');
+    refreshProgress();
     setIsOpen(true);
-  };
+  }, [refreshProgress]);
 
-  const navigateToBuildStory = () => {
-    if (activeView === 'engineering') {
-      setBuildStoryNotice('You are already in Build Story. Continue exploring the architecture layer.');
-      window.clearTimeout(window.__tateBuildStoryNoticeTimer);
-      window.__tateBuildStoryNoticeTimer = window.setTimeout(() => setBuildStoryNotice(''), 3200);
-      return;
-    }
-
-    setBuildStoryNotice('');
-    if (onNavigate) {
-      onNavigate('engineering');
-      markExplorationTask('buildStoryViewed');
-    }
-  };
-
-  useEffect(() => {
-    const handleExternalOpen = () => {
-      markExplorationTask('aiOpened');
-      setIsOpen(true);
-    };
-
-    window.addEventListener(OPEN_COPILOT_EVENT, handleExternalOpen);
-    return () => window.removeEventListener(OPEN_COPILOT_EVENT, handleExternalOpen);
+  const closeTate = useCallback(() => {
+    setIsOpen(false);
   }, []);
 
-  useEffect(() => {
-    if (!isOpen) return;
-
-    setMessages((previous) => (
-      previous.length > 0 ? previous : [createInitialWelcomeMessage()]
-    ));
-
-    checkApiHealth();
-
-    window.setTimeout(() => {
-      inputRef.current?.focus();
-    }, 80);
-  }, [isOpen, checkApiHealth, createInitialWelcomeMessage]);
+  const focusInput = useCallback((value = '') => {
+    if (value) setInput(value);
+    window.setTimeout(() => inputRef.current?.focus(), 80);
+  }, []);
 
   const updateContext = useCallback(async (context) => {
     try {
@@ -236,6 +434,28 @@ const AICopilot = ({ activeView, onNavigate }) => {
   }, []);
 
   useEffect(() => {
+    const handleExternalOpen = () => {
+      markExplorationTask('aiOpened');
+      refreshProgress();
+      setIsOpen(true);
+    };
+
+    window.addEventListener(OPEN_COPILOT_EVENT, handleExternalOpen);
+    return () => window.removeEventListener(OPEN_COPILOT_EVENT, handleExternalOpen);
+  }, [refreshProgress]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+
+    setMessages((previous) => (
+      previous.length > 0 ? previous : [createInitialWelcomeMessage()]
+    ));
+
+    checkApiHealth();
+    focusInput();
+  }, [isOpen, checkApiHealth, createInitialWelcomeMessage, focusInput]);
+
+  useEffect(() => {
     if (isOpen) {
       updateContext(activeView);
       loadQuickActions(activeView);
@@ -252,7 +472,18 @@ const AICopilot = ({ activeView, onNavigate }) => {
     if (messages.length > 0) persistMessages(messages);
   }, [messages]);
 
-  const handleSend = async (overrideQuestion = null) => {
+  const navigateToBuildStory = useCallback(() => {
+    if (onNavigate) {
+      onNavigate('engineering');
+    }
+    markExplorationTask('buildStoryViewed', {
+      source: 'mission_interaction',
+      metadata: { fromTate: true },
+    });
+    refreshProgress();
+  }, [onNavigate, refreshProgress]);
+
+  const handleSend = useCallback(async (overrideQuestion = null) => {
     const questionToSend = typeof overrideQuestion === 'string' ? overrideQuestion : input;
     if (!questionToSend.trim() || isLoading) return;
 
@@ -263,23 +494,24 @@ const AICopilot = ({ activeView, onNavigate }) => {
       timestamp: new Date().toISOString(),
     };
 
+    const historySnapshot = [...messages, userMessage]
+      .slice(-10)
+      .map(({ role, content, timestamp }) => ({ role, content, timestamp }));
+
     setMessages((previous) => [...previous, userMessage]);
     setInput('');
     setIsLoading(true);
     markExplorationTask('aiQuestionAsked');
+    refreshProgress();
 
     try {
       let response;
 
       try {
-        const recentHistory = [...messages, userMessage]
-          .slice(-10)
-          .map(({ role, content, timestamp }) => ({ role, content, timestamp }));
-
         response = await api.post('/copilot/chat', {
           question: questionToSend,
           context: activeView,
-          history: recentHistory,
+          history: historySnapshot,
         }, { timeout: 10000 });
       } catch (apiError) {
         response = {
@@ -339,9 +571,38 @@ const AICopilot = ({ activeView, onNavigate }) => {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [activeView, input, isLoading, loadQuickActions, messages, refreshProgress]);
 
-  const handleQuickAction = (action) => {
+  const testConnection = useCallback(async () => {
+    try {
+      await api.get('/health', { timeout: 3000 });
+      const copilotTest = await api.get('/copilot/health', { timeout: 3000 });
+
+      setHealthInfo(copilotTest.data);
+      setApiStatus('healthy');
+      setConnectionError('');
+      setMessages((previous) => [...previous, {
+        id: Date.now(),
+        role: 'assistant',
+        content: '✅ **Connection successful.** The backend and Tate copilot service are responding.',
+        type: 'success',
+        timestamp: new Date().toISOString(),
+      }]);
+    } catch (error) {
+      setApiStatus('unhealthy');
+      setHealthInfo(null);
+      setConnectionError(error.message);
+      setMessages((previous) => [...previous, {
+        id: Date.now(),
+        role: 'assistant',
+        content: `❌ **Connection failed**\n\n${error.message}`,
+        type: 'error',
+        timestamp: new Date().toISOString(),
+      }]);
+    }
+  }, []);
+
+  const handleQuickAction = useCallback((action) => {
     if (!action) return;
 
     if (action.startsWith('navigate:')) {
@@ -356,16 +617,16 @@ const AICopilot = ({ activeView, onNavigate }) => {
     } else if (action === 'test_connection') {
       testConnection();
     }
-  };
+  }, [handleSend, navigateToBuildStory, onNavigate, testConnection]);
 
-  const clearChatMemory = async () => {
+  const clearChatMemory = useCallback(async () => {
     if (isClearingMemory) return;
 
     setIsClearingMemory(true);
     const resetMessage = {
       id: Date.now(),
       role: 'assistant',
-      content: `⚓ **Tate Intelligence is ready for launch**\n\nAsk about any passenger, survival pattern, model decision, or system layer. I’ll help you turn the Titanic dataset into clear intelligence.`,
+      content: `⚓ **Tate Intelligence is ready for launch**\n\nAsk about any passenger, survival pattern, model decision, system layer, or continue the guided mission from Mission Control.`,
       type: 'welcome',
       timestamp: new Date().toISOString(),
     };
@@ -404,36 +665,7 @@ const AICopilot = ({ activeView, onNavigate }) => {
     } finally {
       setIsClearingMemory(false);
     }
-  };
-
-  const testConnection = async () => {
-    try {
-      await api.get('/health', { timeout: 3000 });
-      const copilotTest = await api.get('/copilot/health', { timeout: 3000 });
-
-      setHealthInfo(copilotTest.data);
-      setApiStatus('healthy');
-      setConnectionError('');
-      setMessages((previous) => [...previous, {
-        id: Date.now(),
-        role: 'assistant',
-        content: '✅ **Connection successful.** The backend and Tate copilot service are responding.',
-        type: 'success',
-        timestamp: new Date().toISOString(),
-      }]);
-    } catch (error) {
-      setApiStatus('unhealthy');
-      setHealthInfo(null);
-      setConnectionError(error.message);
-      setMessages((previous) => [...previous, {
-        id: Date.now(),
-        role: 'assistant',
-        content: `❌ **Connection failed**\n\n${error.message}`,
-        type: 'error',
-        timestamp: new Date().toISOString(),
-      }]);
-    }
-  };
+  }, [isClearingMemory]);
 
   const launcher = !isOpen ? (
     <button
@@ -448,61 +680,69 @@ const AICopilot = ({ activeView, onNavigate }) => {
       <span className="tate-magic-sparkle tate-sparkle-three" aria-hidden="true">✦</span>
 
       <div className="relative flex h-14 w-14 items-center justify-center overflow-hidden rounded-full border border-white/20 bg-white shadow-[0_12px_35px_rgba(34,211,238,0.28)]">
-        <span className="absolute inset-0 rounded-full bg-[radial-gradient(circle_at_30%_20%,rgba(255,255,255,0.95),transparent_35%),radial-gradient(circle_at_70%_80%,rgba(147,197,253,0.45),transparent_45%)]" />
+        <span className="absolute inset-0 bg-gradient-to-br from-cyan-100 via-white to-violet-100 opacity-80" />
         <img src="/Tate.svg" alt="Tate AI assistant" className="relative h-11 w-11 object-contain transition-transform duration-500 group-hover:scale-110" />
         <span className={`absolute right-1 top-1 h-3.5 w-3.5 rounded-full border-2 border-white ${apiStatus === 'healthy' ? 'bg-emerald-400' : 'bg-amber-400'}`} />
       </div>
 
-      <div className="hidden pr-1 text-left leading-tight sm:block">
-        <div className="text-sm font-black tracking-tight">Ask Tate</div>
-        <div className="text-[11px] font-semibold text-cyan-100/90">Cognitive Interface</div>
+      <div className="relative hidden pr-1 text-left sm:block">
+        <div className="text-[15px] font-black leading-none tracking-[-0.035em] text-white drop-shadow-[0_0_16px_rgba(125,249,255,0.35)]">
+          Tate
+        </div>
+        <div className="mt-1 text-[9px] font-black uppercase tracking-[0.22em] text-cyan-100/85">
+          Cognitive Interface
+        </div>
       </div>
     </button>
   ) : null;
 
   const panel = isOpen ? (
     <div
-      className="fixed bottom-5 right-5 z-[9999] max-w-[calc(100vw-1rem)] pointer-events-auto"
+      className="fixed inset-x-2 bottom-2 z-[9999] pointer-events-auto sm:inset-auto sm:bottom-5 sm:right-5 sm:max-w-[calc(100vw-1rem)]"
       role="dialog"
-      aria-label="Tate Intelligence chat"
+      aria-label="Tate AI copilot and mission control"
     >
-      <div className="premium-card flex h-[min(74vh,42rem)] w-[min(94vw,24rem)] flex-col overflow-hidden rounded-[1.75rem] shadow-[0_24px_80px_rgba(2,6,23,0.5)]">
-        <div className="border-b border-white/10 p-4">
-          <div className="flex items-center justify-between gap-3">
-            <div className="flex items-center gap-3">
-              <div className="relative flex h-12 w-12 items-center justify-center overflow-hidden rounded-2xl border border-cyan-200/20 bg-white">
-                <img src="/Tate.svg" alt="Tate AI assistant" className="h-10 w-10 object-contain" />
+      <div className="premium-card flex h-[calc(100dvh-1rem)] w-full flex-col overflow-hidden rounded-[1.5rem] shadow-[0_24px_80px_rgba(2,6,23,0.5)] sm:h-[min(82vh,46rem)] sm:w-[min(94vw,30rem)] sm:rounded-[1.75rem]">
+        <div className="shrink-0 border-b border-white/10 bg-slate-950/80 p-3 sm:p-4">
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex min-w-0 items-center gap-3">
+              <div className="relative flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-cyan-200/20 bg-white sm:h-12 sm:w-12">
+                <img src="/Tate.svg" alt="Tate AI assistant" className="h-9 w-9 object-contain sm:h-10 sm:w-10" />
                 <span className={`absolute right-1 top-1 h-3 w-3 rounded-full border-2 border-white ${apiStatus === 'healthy' ? 'bg-emerald-400' : 'bg-amber-400'}`} />
               </div>
-              <div>
-                <div className="text-sm font-black text-white">Tate Intelligence</div>
-                <div className="mt-0.5 flex items-center gap-2 text-[11px] font-semibold text-slate-500">
+
+              <div className="min-w-0">
+                <h2 className="truncate text-base font-black tracking-[-0.04em] text-white sm:text-lg">
+                  Ms. Tate
+                </h2>
+                <div className="mt-1 flex flex-wrap items-center gap-2 text-[9px] font-black uppercase tracking-[0.14em] text-slate-500 sm:text-[10px]">
                   <span className={`h-1.5 w-1.5 rounded-full ${apiStatus === 'healthy' ? 'bg-emerald-300' : 'bg-amber-300'}`} />
-                  {apiStatus === 'healthy' ? 'Backend aware' : 'Connection pending'}
+                  <span>{apiStatus === 'healthy' ? 'Backend online' : 'Checking backend'}</span>
                 </div>
               </div>
             </div>
 
             <button
               type="button"
-              onClick={() => setIsOpen(false)}
-              className="rounded-full border border-white/10 bg-white/[0.06] px-3 py-1.5 text-xs font-black text-slate-300 transition hover:bg-white/[0.1] hover:text-white"
-              aria-label="Close Tate assistant"
+              onClick={closeTate}
+              className="rounded-xl border border-white/10 bg-white/[0.06] px-3 py-2 text-xs font-black text-slate-300 transition hover:bg-white/[0.1] hover:text-white"
+              aria-label="Close Tate"
             >
               Close
             </button>
           </div>
 
-          <div className="mt-4 flex items-center justify-between gap-3 rounded-2xl border border-white/10 bg-white/[0.035] px-3 py-2">
+          <div className="mt-3 flex items-center justify-between gap-3 rounded-2xl border border-white/10 bg-white/[0.045] px-3 py-2.5 sm:px-4 sm:py-3">
             <div className="grid min-w-0 flex-1 grid-cols-2 gap-3" aria-label="Tate session metadata">
               <div className="min-w-0 border-r border-white/10 pr-3">
-                <div className="text-[9px] font-black uppercase tracking-[0.18em] text-cyan-200/60">Context</div>
-                <div className="mt-0.5 truncate text-xs font-black capitalize text-slate-200">{activeView}</div>
+                <div className="text-[8px] font-black uppercase tracking-[0.18em] text-slate-500 sm:text-[9px]">Context</div>
+                <div className="mt-1 truncate text-xs font-black text-slate-200">{sectionLabelMap[activeView] || activeView}</div>
               </div>
-
               <div className="min-w-0">
-                <div className="text-[9px] font-black uppercase tracking-[0.18em] text-cyan-200/60">Dataset</div>
-                <div className="mt-0.5 truncate text-xs font-black text-slate-200">{healthInfo?.dataset_size || '—'} rows</div>
+                <div className="text-[8px] font-black uppercase tracking-[0.18em] text-slate-500 sm:text-[9px]">Dataset</div>
+                <div className="mt-1 truncate text-xs font-black text-slate-200">
+                  {healthInfo?.dataset_size || healthInfo?.document_count || 'Live'}
+                </div>
               </div>
             </div>
 
@@ -510,80 +750,87 @@ const AICopilot = ({ activeView, onNavigate }) => {
               type="button"
               onClick={clearChatMemory}
               disabled={isClearingMemory}
-              className="shrink-0 rounded-full border border-cyan-200/20 bg-cyan-300/10 px-3.5 py-2 text-[11px] font-black text-cyan-100 transition hover:-translate-y-0.5 hover:border-cyan-200/40 hover:bg-cyan-300/15 disabled:cursor-wait disabled:opacity-60"
-              aria-label="Reset Tate conversation"
-              title="Reset Tate conversation"
+              className="shrink-0 rounded-xl border border-white/10 bg-white/[0.06] px-3 py-2 text-xs font-black text-slate-300 transition hover:bg-white/[0.1] hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {isClearingMemory ? 'Resetting' : 'Reset'}
+              {isClearingMemory ? 'Resetting…' : 'New Chat'}
             </button>
           </div>
+
+          {connectionError && (
+            <div className="mt-3 rounded-2xl border border-amber-200/20 bg-amber-300/10 px-3 py-2 text-xs font-semibold leading-relaxed text-amber-100">
+              {connectionError}
+            </div>
+          )}
         </div>
 
-        {buildStoryNotice && (
-          <div className="border-b border-cyan-200/15 bg-cyan-300/10 px-4 py-3 text-xs font-semibold text-cyan-100">
-            {buildStoryNotice}
-          </div>
-        )}
-
-        {connectionError && apiStatus === 'unhealthy' && (
-          <div className="border-b border-amber-200/15 bg-amber-300/10 px-4 py-3 text-xs font-semibold text-amber-100">
-            Backend warning: {connectionError}
-          </div>
-        )}
+        <MissionControlBar
+          activeView={activeView}
+          onNavigate={onNavigate}
+          progress={progress}
+          onRefreshProgress={refreshProgress}
+          onFocusInput={focusInput}
+          onClosePanel={closeTate}
+        />
 
         <div ref={messagesContainerRef} className="mobile-scroll flex-1 space-y-4 overflow-y-auto p-4">
-          {messages.map((message) => {
-            const isUser = message.role === 'user';
-            return (
-              <div key={message.id} className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>
-                <div className={`max-w-[86%] rounded-[1.35rem] border px-4 py-3 ${
-                  isUser
-                    ? 'border-cyan-200/20 bg-cyan-300/15 text-cyan-50'
-                    : 'border-white/10 bg-white/[0.055] text-slate-300'
-                }`}>
-                  <MarkdownText text={message.content} />
-                  {Array.isArray(message.suggestions) && message.suggestions.length > 0 && (
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      {message.suggestions.slice(0, 3).map((suggestion) => (
-                        <button
-                          key={suggestion.text || suggestion.action}
-                          type="button"
-                          onClick={() => handleQuickAction(suggestion.action)}
-                          className="rounded-full border border-white/10 bg-white/[0.06] px-3 py-1.5 text-[11px] font-black text-slate-200 transition hover:bg-white/[0.1]"
-                        >
-                          {suggestion.text || 'Open'}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
+          {messages.map((message) => (
+            <div
+              key={message.id}
+              className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
+            >
+              <div className={`max-w-[92%] rounded-[1.35rem] border px-4 py-3 text-sm sm:max-w-[86%] ${
+                message.role === 'user'
+                  ? 'border-cyan-200/20 bg-cyan-300/15 text-cyan-50'
+                  : message.type === 'error'
+                    ? 'border-rose-200/20 bg-rose-400/10 text-rose-50'
+                    : message.type === 'success'
+                      ? 'border-emerald-200/20 bg-emerald-300/10 text-emerald-50'
+                      : 'border-white/10 bg-white/[0.055] text-slate-200'
+              }`}>
+                <MessageContent content={message.content} />
+
+                {Array.isArray(message.suggestions) && message.suggestions.length > 0 && (
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {message.suggestions.slice(0, 3).map((suggestion, index) => (
+                      <button
+                        key={`${message.id}-${suggestion.text || index}`}
+                        type="button"
+                        onClick={() => handleQuickAction(suggestion.action || `ask:${suggestion.text}`)}
+                        className="rounded-full border border-white/10 bg-white/[0.06] px-3 py-1.5 text-[11px] font-black text-slate-200 transition hover:bg-white/[0.1]"
+                      >
+                        {suggestion.text || suggestion.label}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
-            );
-          })}
+            </div>
+          ))}
 
           {isLoading && (
             <div className="flex justify-start">
               <div className="rounded-[1.35rem] border border-white/10 bg-white/[0.055] px-4 py-3 text-sm text-slate-300">
                 <div className="flex items-center gap-2">
                   <span className="h-2 w-2 animate-pulse rounded-full bg-cyan-300" />
-                  Tate is analyzing the request...
+                  Tate is reasoning…
                 </div>
               </div>
             </div>
           )}
         </div>
 
-        <div className="border-t border-white/10 p-3">
+        <div className="shrink-0 border-t border-white/10 bg-slate-950/85 p-3 sm:p-4">
           {quickActions.length > 0 && (
             <div className="mb-3 flex gap-2 overflow-x-auto mobile-scroll pb-1">
-              {quickActions.map((action) => (
+              {quickActions.map((action, index) => (
                 <button
-                  key={`${action.label}-${action.action}`}
+                  key={`${action.label}-${index}`}
                   type="button"
                   onClick={() => handleQuickAction(action.action)}
-                  className="shrink-0 rounded-full border border-white/10 bg-white/[0.055] px-3 py-2 text-xs font-black text-slate-300 transition hover:bg-white/[0.1] hover:text-white"
+                  className="shrink-0 rounded-full border border-white/10 bg-white/[0.06] px-3 py-2 text-[11px] font-black text-slate-300 transition hover:bg-white/[0.1] hover:text-white"
                 >
-                  <span className="mr-1">{action.icon || '✦'}</span>{action.label}
+                  <span className="mr-1">{action.icon}</span>
+                  {action.label}
                 </button>
               ))}
             </div>
@@ -596,36 +843,21 @@ const AICopilot = ({ activeView, onNavigate }) => {
             }}
             className="flex items-center gap-2"
           >
-            <label htmlFor="tate-chat-input" className="sr-only">Ask Tate</label>
             <input
-              id="tate-chat-input"
               ref={inputRef}
               type="text"
               value={input}
               onChange={(event) => setInput(event.target.value)}
-              onInput={(event) => setInput(event.currentTarget.value)}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter') {
-                  event.preventDefault();
-                  handleSend();
-                }
-              }}
-              onMouseDown={(event) => event.stopPropagation()}
-              onClick={(event) => event.stopPropagation()}
-              placeholder="Ask Tate about survival, passengers, ML, search, or architecture..."
-              autoComplete="off"
-              spellCheck="false"
-              disabled={false}
-              readOnly={false}
+              placeholder="Ask Tate or continue a mission…"
               className="h-12 min-w-0 flex-1 rounded-2xl border border-white/10 bg-white px-4 text-sm font-semibold text-slate-950 placeholder:text-slate-500 shadow-inner focus:border-cyan-300 focus:outline-none focus:ring-2 focus:ring-cyan-300/30"
+              disabled={isLoading}
             />
             <button
               type="submit"
-              disabled={isLoading}
-              className="h-12 shrink-0 rounded-2xl bg-cyan-50 px-4 text-sm font-black text-slate-950 transition hover:-translate-y-0.5 hover:bg-white disabled:cursor-wait disabled:opacity-70"
-              title={input.trim() ? 'Send message' : 'Type a message first'}
+              disabled={isLoading || !input.trim()}
+              className="flex h-12 shrink-0 items-center justify-center rounded-2xl bg-cyan-300 px-4 text-sm font-black text-slate-950 shadow-lg shadow-cyan-950/20 transition hover:-translate-y-0.5 hover:bg-cyan-200 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0"
             >
-              {isLoading ? 'Wait' : 'Send'}
+              Send
             </button>
           </form>
         </div>
@@ -633,11 +865,12 @@ const AICopilot = ({ activeView, onNavigate }) => {
     </div>
   ) : null;
 
-  return (
+  return createPortal(
     <>
       {launcher}
-      {panel && typeof document !== 'undefined' ? createPortal(panel, document.body) : panel}
-    </>
+      {panel}
+    </>,
+    document.body
   );
 };
 

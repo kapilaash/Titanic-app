@@ -5,7 +5,7 @@ import { fetchDatasetInfo } from './api/queries';
 import ErrorBoundary from './components/common/ErrorBoundary';
 import LoadingFallback from './components/common/LoadingFallback';
 import FeatureShowcase from './components/FeatureShowcase';
-import MissionGuideModal from './components/MissionGuideModal';
+// import MissionGuideModal from './components/MissionGuideModal';
 import { markExplorationTask } from './utils/explorationProgress';
 
 const DataTable = lazy(() => import('./components/DataTable'));
@@ -419,7 +419,7 @@ function App() {
 
       <Suspense fallback={null}>
         <AICopilot activeView={activeView} onNavigate={handleNavigate} />
-        <MissionGuideModal activeView={activeView} onNavigate={handleNavigate} />
+        {/* <MissionGuideModal activeView={activeView} onNavigate={handleNavigate} /> */}
       </Suspense>
     </div>
   );
