@@ -203,23 +203,6 @@ const AICopilot = ({ activeView, onNavigate }) => {
     }, 80);
   }, [isOpen, checkApiHealth, createInitialWelcomeMessage]);
 
-  useEffect(() => {
-    if (isOpen) {
-      updateContext(activeView);
-      loadQuickActions(activeView);
-    }
-  }, [activeView, isOpen, updateContext, loadQuickActions]);
-
-  useEffect(() => {
-    if (messagesContainerRef.current) {
-      messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight;
-    }
-  }, [messages, isLoading]);
-
-  useEffect(() => {
-    if (messages.length > 0) persistMessages(messages);
-  }, [messages]);
-
   const updateContext = useCallback(async (context) => {
     try {
       await api.post('/copilot/set-context', { context }, { timeout: 3000 });
@@ -251,6 +234,23 @@ const AICopilot = ({ activeView, onNavigate }) => {
       ]);
     }
   }, []);
+
+  useEffect(() => {
+    if (isOpen) {
+      updateContext(activeView);
+      loadQuickActions(activeView);
+    }
+  }, [activeView, isOpen, updateContext, loadQuickActions]);
+
+  useEffect(() => {
+    if (messagesContainerRef.current) {
+      messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight;
+    }
+  }, [messages, isLoading]);
+
+  useEffect(() => {
+    if (messages.length > 0) persistMessages(messages);
+  }, [messages]);
 
   const handleSend = async (overrideQuestion = null) => {
     const questionToSend = typeof overrideQuestion === 'string' ? overrideQuestion : input;
