@@ -713,7 +713,7 @@ const AICopilot = ({ activeView, onNavigate }) => {
 
               <div className="min-w-0">
                 <h2 className="truncate text-base font-black tracking-[-0.04em] text-white sm:text-lg">
-                  Ms. Tate
+                  Tate
                 </h2>
                 <div className="mt-1 flex flex-wrap items-center gap-2 text-[9px] font-black uppercase tracking-[0.14em] text-slate-500 sm:text-[10px]">
                   <span className={`h-1.5 w-1.5 rounded-full ${apiStatus === 'healthy' ? 'bg-emerald-300' : 'bg-amber-300'}`} />
