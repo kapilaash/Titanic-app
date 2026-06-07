@@ -209,7 +209,7 @@ const MissionControlBar = ({
   })();
 
   return (
-    <div className="shrink-0 border-b border-white/10 bg-slate-950/92 px-3 py-2.5 sm:px-4">
+    <div className="tate-mission-control mobile-scroll shrink-0 overflow-y-auto overscroll-contain border-b border-white/10 bg-slate-950/92 px-3 py-2.5 sm:px-4">
       <div className="rounded-[1.05rem] border border-cyan-200/15 bg-gradient-to-r from-cyan-300/[0.075] via-white/[0.035] to-violet-400/[0.065] p-3 shadow-[0_12px_35px_rgba(8,47,73,0.12)]">
         <div className="flex items-center gap-3">
           <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.08] text-lg">
@@ -698,11 +698,11 @@ const AICopilot = ({ activeView, onNavigate }) => {
 
   const panel = isOpen ? (
     <div
-      className="fixed inset-x-2 bottom-2 z-[9999] pointer-events-auto sm:inset-auto sm:bottom-5 sm:right-5 sm:max-w-[calc(100vw-1rem)]"
+      className="fixed inset-x-2 bottom-[max(0.5rem,env(safe-area-inset-bottom))] top-2 z-[9999] pointer-events-auto sm:inset-auto sm:bottom-5 sm:right-5 sm:top-auto sm:max-w-[calc(100vw-1rem)]"
       role="dialog"
       aria-label="Tate AI copilot and mission control"
     >
-      <div className="premium-card flex h-[calc(100dvh-1rem)] w-full flex-col overflow-hidden rounded-[1.5rem] shadow-[0_24px_80px_rgba(2,6,23,0.5)] sm:h-[min(82vh,46rem)] sm:w-[min(94vw,30rem)] sm:rounded-[1.75rem]">
+      <div className="tate-panel premium-card flex h-full min-h-0 w-full flex-col overflow-hidden rounded-[1.5rem] shadow-[0_24px_80px_rgba(2,6,23,0.5)] sm:h-[min(82dvh,46rem)] sm:w-[min(94vw,30rem)] sm:rounded-[1.75rem]">
         <div className="shrink-0 border-b border-white/10 bg-slate-950/80 p-3 sm:p-4">
           <div className="flex items-start justify-between gap-3">
             <div className="flex min-w-0 items-center gap-3">
@@ -772,7 +772,7 @@ const AICopilot = ({ activeView, onNavigate }) => {
           onClosePanel={closeTate}
         />
 
-        <div ref={messagesContainerRef} className="mobile-scroll flex-1 space-y-4 overflow-y-auto p-4">
+        <div ref={messagesContainerRef} className="mobile-scroll min-h-0 flex-1 space-y-4 overflow-y-auto p-4">
           {messages.map((message) => (
             <div
               key={message.id}
